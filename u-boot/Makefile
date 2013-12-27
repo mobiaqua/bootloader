@@ -8,7 +8,7 @@
 VERSION = 2014
 PATCHLEVEL = 01
 SUBLEVEL =
-EXTRAVERSION = -rc1
+EXTRAVERSION = -rc2
 ifneq "$(SUBLEVEL)" ""
 U_BOOT_VERSION = $(VERSION).$(PATCHLEVEL).$(SUBLEVEL)$(EXTRAVERSION)
 else
@@ -109,11 +109,6 @@ export	TOPDIR SRCTREE OBJTREE SPLTREE TPLTREE
 MKCONFIG	:= $(SRCTREE)/mkconfig
 export MKCONFIG
 
-ifneq ($(OBJTREE),$(SRCTREE))
-REMOTE_BUILD	:= 1
-export REMOTE_BUILD
-endif
-
 # $(obj) and (src) are defined in config.mk but here in main Makefile
 # we also need them before config.mk is included which is the case for
 # some targets like unconfig, clean, clobber, distclean, etc.
@@ -168,7 +163,7 @@ endif
 include $(TOPDIR)/config.mk
 
 # Targets which don't build the source code
-NON_BUILD_TARGETS = backup clean clobber distclean mkproper tidy unconfig
+NON_BUILD_TARGETS = backup clean clobber distclean mrproper tidy unconfig
 
 # Only do the generic board check when actually building, not configuring
 ifeq ($(filter $(NON_BUILD_TARGETS),$(MAKECMDGOALS)),)
@@ -187,7 +182,7 @@ ifndef LDSCRIPT
 	#LDSCRIPT := $(TOPDIR)/board/$(BOARDDIR)/u-boot.lds.debug
 	ifdef CONFIG_SYS_LDSCRIPT
 		# need to strip off double quotes
-		LDSCRIPT := $(subst ",,$(CONFIG_SYS_LDSCRIPT))
+		LDSCRIPT := $(CONFIG_SYS_LDSCRIPT:"%"=%)
 	endif
 endif
 
@@ -218,15 +213,11 @@ endif
 #########################################################################
 # U-Boot objects....order is important (i.e. start must be first)
 
-OBJS  = $(CPUDIR)/start.o
-ifeq ($(CPU),ppc4xx)
-OBJS += $(CPUDIR)/resetvec.o
-endif
-ifeq ($(CPU),mpc85xx)
-OBJS += $(CPUDIR)/resetvec.o
-endif
+head-y := $(CPUDIR)/start.o
+head-$(CONFIG_4xx) += arch/powerpc/cpu/ppc4xx/resetvec.o
+head-$(CONFIG_MPC85xx) += arch/powerpc/cpu/mpc85xx/resetvec.o
 
-OBJS := $(addprefix $(obj),$(OBJS))
+OBJS := $(addprefix $(obj),$(head-y))
 
 HAVE_VENDOR_COMMON_LIB = $(if $(wildcard board/$(VENDOR)/common/Makefile),y,n)
 
@@ -249,9 +240,9 @@ LIBS-y += drivers/i2c/
 LIBS-y += drivers/input/
 LIBS-y += drivers/mmc/
 LIBS-y += drivers/mtd/
-LIBS-y += drivers/mtd/nand/
+LIBS-$(CONFIG_CMD_NAND) += drivers/mtd/nand/
 LIBS-y += drivers/mtd/onenand/
-LIBS-y += drivers/mtd/ubi/
+LIBS-$(CONFIG_CMD_UBI) += drivers/mtd/ubi/
 LIBS-y += drivers/mtd/spi/
 LIBS-y += drivers/net/
 LIBS-y += drivers/net/phy/
@@ -263,6 +254,7 @@ LIBS-y += drivers/power/ \
 	drivers/power/battery/
 LIBS-y += drivers/spi/
 LIBS-$(CONFIG_FMAN_ENET) += drivers/net/fm/
+LIBS-$(CONFIG_SYS_FSL_DDR) += drivers/ddr/fsl/
 LIBS-y += drivers/serial/
 LIBS-y += drivers/usb/eth/
 LIBS-y += drivers/usb/gadget/
@@ -274,7 +266,7 @@ LIBS-y += drivers/usb/ulpi/
 LIBS-y += common/
 LIBS-y += lib/libfdt/
 LIBS-$(CONFIG_API) += api/
-LIBS-y += post/
+LIBS-$(CONFIG_HAS_POST) += post/
 LIBS-y += test/
 
 ifneq (,$(filter $(SOC), mx25 mx27 mx5 mx6 mx31 mx35 mxs vf610))
@@ -344,7 +336,7 @@ ALL-$(CONFIG_SPL_FRAMEWORK) += $(obj)u-boot.img
 ALL-$(CONFIG_TPL) += $(obj)tpl/u-boot-tpl.bin
 ALL-$(CONFIG_OF_SEPARATE) += $(obj)u-boot.dtb $(obj)u-boot-dtb.bin
 ifneq ($(CONFIG_SPL_TARGET),)
-ALL-$(CONFIG_SPL) += $(obj)$(subst ",,$(CONFIG_SPL_TARGET))
+ALL-$(CONFIG_SPL) += $(obj)$(CONFIG_SPL_TARGET:"%"=%)
 endif
 
 # enable combined SPL/u-boot/dtb rules for tegra
@@ -371,7 +363,7 @@ $(obj)u-boot.hex:	$(obj)u-boot
 		$(OBJCOPY) ${OBJCFLAGS} -O ihex $< $@
 
 $(obj)u-boot.srec:	$(obj)u-boot
-		$(OBJCOPY) -O srec $< $@
+		$(OBJCOPY) ${OBJCFLAGS} -O srec $< $@
 
 $(obj)u-boot.bin:	$(obj)u-boot
 		$(OBJCOPY) ${OBJCFLAGS} -O binary $< $@
@@ -479,12 +471,10 @@ $(obj)u-boot.sb:       $(obj)u-boot.bin $(obj)spl/u-boot-spl.bin
 $(obj)u-boot.spr:	$(obj)u-boot.img $(obj)spl/u-boot-spl.bin
 		$(obj)tools/mkimage -A $(ARCH) -T firmware -C none \
 		-a $(CONFIG_SPL_TEXT_BASE) -e $(CONFIG_SPL_TEXT_BASE) -n XLOADER \
-		-d $(obj)spl/u-boot-spl.bin $(obj)spl/u-boot-spl.img
-		tr "\000" "\377" < /dev/zero | dd ibs=1 count=$(CONFIG_SPL_PAD_TO) \
-			of=$(obj)spl/u-boot-spl-pad.img 2>/dev/null
-		dd if=$(obj)spl/u-boot-spl.img of=$(obj)spl/u-boot-spl-pad.img \
-			conv=notrunc 2>/dev/null
-		cat $(obj)spl/u-boot-spl-pad.img $(obj)u-boot.img > $@
+		-d $(obj)spl/u-boot-spl.bin $@
+		$(OBJCOPY) -I binary -O binary \
+			--pad-to=$(CONFIG_SPL_PAD_TO) --gap-fill=0xff $@
+		cat $(obj)u-boot.img >> $@
 
 ifneq ($(CONFIG_TEGRA),)
 $(obj)u-boot-nodtb-tegra.bin: $(obj)spl/u-boot-spl.bin $(obj)u-boot.bin
@@ -507,11 +497,9 @@ $(obj)u-boot-img.bin: $(obj)spl/u-boot-spl.bin $(obj)u-boot.img
 # at the start padded up to the start of the SPL image. And then concat
 # the SPL image to the end.
 $(obj)u-boot-img-spl-at-end.bin: $(obj)spl/u-boot-spl.bin $(obj)u-boot.img
-		tr "\000" "\377" < /dev/zero | dd ibs=1 count=$(CONFIG_UBOOT_PAD_TO) \
-			of=$(obj)u-boot-pad.img 2>/dev/null
-		dd if=$(obj)u-boot.img of=$(obj)u-boot-pad.img \
-			conv=notrunc 2>/dev/null
-		cat $(obj)u-boot-pad.img $(obj)spl/u-boot-spl.bin > $@
+		$(OBJCOPY) -I binary -O binary --pad-to=$(CONFIG_UBOOT_PAD_TO) \
+			 --gap-fill=0xff $(obj)u-boot.img $@
+		cat $(obj)spl/u-boot-spl.bin >> $@
 
 ifeq ($(CONFIG_SANDBOX),y)
 GEN_UBOOT = \
@@ -527,7 +515,7 @@ GEN_UBOOT = \
 endif
 
 $(obj)u-boot:	depend \
-		$(SUBDIR_TOOLS) $(OBJS) $(LIBS) $(LDSCRIPT) $(obj)u-boot.lds
+		$(SUBDIR_TOOLS) $(OBJS) $(LIBS) $(obj)u-boot.lds
 		$(GEN_UBOOT)
 ifeq ($(CONFIG_KALLSYMS),y)
 		smap=`$(call SYSTEM_MAP,$(obj)u-boot) | \
@@ -548,10 +536,7 @@ $(SUBDIRS):	depend
 
 $(SUBDIR_EXAMPLES-y): $(obj)u-boot
 
-$(LDSCRIPT):	depend
-		$(MAKE) -C $(dir $@) $(notdir $@)
-
-$(obj)u-boot.lds: $(LDSCRIPT)
+$(obj)u-boot.lds: $(LDSCRIPT) depend
 		$(CPP) $(CPPFLAGS) $(LDPPFLAGS) -ansi -D__ASSEMBLY__ -P - <$< >$@
 
 nand_spl:	$(TIMESTAMP_FILE) $(VERSION_FILE) depend
@@ -585,7 +570,7 @@ FINDFLAGS := -L
 checkstack:
 		$(CROSS_COMPILE)objdump -d $(obj)u-boot \
 			`$(FIND) $(obj) -name u-boot-spl -print` | \
-			perl $(src)tools/checkstack.pl $(ARCH)
+			perl $(src)scripts/checkstack.pl $(ARCH)
 
 tags ctags:
 		ctags -w -o $(obj)ctags `$(FIND) $(FINDFLAGS) $(TAG_SUBDIRS) \
@@ -637,63 +622,49 @@ checkdtc:
 # to regenerate the autoconf.mk file.
 $(obj)include/autoconf.mk.dep: $(obj)include/config.h include/common.h
 	@$(XECHO) Generating $@ ; \
-	set -e ; \
 	: Generate the dependancies ; \
 	$(CC) -x c -DDO_DEPS_ONLY -M $(CFLAGS) $(CPPFLAGS) \
-		-MQ $(obj)include/autoconf.mk include/common.h > $@
+		-MQ $(obj)include/autoconf.mk include/common.h > $@ || \
+		rm $@
 
 $(obj)include/autoconf.mk: $(obj)include/config.h
 	@$(XECHO) Generating $@ ; \
-	set -e ; \
 	: Extract the config macros ; \
-	$(CPP) $(CFLAGS) -DDO_DEPS_ONLY -dM include/common.h | \
-		sed -n -f tools/scripts/define2mk.sed > $@.tmp && \
-	mv $@.tmp $@
+	$(CPP) $(CFLAGS) -DDO_DEPS_ONLY -dM include/common.h > $@.tmp && \
+		sed -n -f tools/scripts/define2mk.sed $@.tmp > $@; \
+	rm $@.tmp
 
 # Auto-generate the spl-autoconf.mk file (which is included by all makefiles for SPL)
 $(obj)include/tpl-autoconf.mk: $(obj)include/config.h
 	@$(XECHO) Generating $@ ; \
-	set -e ; \
 	: Extract the config macros ; \
 	$(CPP) $(CFLAGS) -DCONFIG_TPL_BUILD  -DCONFIG_SPL_BUILD\
-			-DDO_DEPS_ONLY -dM include/common.h | \
-	sed -n -f tools/scripts/define2mk.sed > $@.tmp && \
-	mv $@.tmp $@
+			-DDO_DEPS_ONLY -dM include/common.h > $@.tmp && \
+		sed -n -f tools/scripts/define2mk.sed $@.tmp > $@; \
+	rm $@.tmp
 
 $(obj)include/spl-autoconf.mk: $(obj)include/config.h
 	@$(XECHO) Generating $@ ; \
-	set -e ; \
 	: Extract the config macros ; \
-	$(CPP) $(CFLAGS) -DCONFIG_SPL_BUILD -DDO_DEPS_ONLY -dM include/common.h | \
-	sed -n -f tools/scripts/define2mk.sed > $@.tmp && \
-	mv $@.tmp $@
+	$(CPP) $(CFLAGS) -DCONFIG_SPL_BUILD -DDO_DEPS_ONLY -dM include/common.h > $@.tmp && \
+		sed -n -f tools/scripts/define2mk.sed $@.tmp > $@; \
+	rm $@.tmp
 
-$(obj)include/generated/generic-asm-offsets.h:	$(obj)include/autoconf.mk.dep \
-	$(obj)include/spl-autoconf.mk \
-	$(obj)include/tpl-autoconf.mk \
-	$(obj)lib/asm-offsets.s
+$(obj)include/generated/generic-asm-offsets.h: $(obj)lib/asm-offsets.s
 	@$(XECHO) Generating $@
 	tools/scripts/make-asm-offsets $(obj)lib/asm-offsets.s $@
 
-$(obj)lib/asm-offsets.s:	$(obj)include/autoconf.mk.dep \
-	$(obj)include/spl-autoconf.mk \
-	$(obj)include/tpl-autoconf.mk \
-	$(src)lib/asm-offsets.c
+$(obj)lib/asm-offsets.s: $(obj)include/config.h $(src)lib/asm-offsets.c
 	@mkdir -p $(obj)lib
 	$(CC) -DDO_DEPS_ONLY \
 		$(CFLAGS) $(CFLAGS_$(BCURDIR)/$(@F)) $(CFLAGS_$(BCURDIR)) \
 		-o $@ $(src)lib/asm-offsets.c -c -S
 
-$(obj)include/generated/asm-offsets.h:	$(obj)include/autoconf.mk.dep \
-	$(obj)include/spl-autoconf.mk \
-	$(obj)include/tpl-autoconf.mk \
-	$(obj)$(CPUDIR)/$(SOC)/asm-offsets.s
+$(obj)include/generated/asm-offsets.h: $(obj)$(CPUDIR)/$(SOC)/asm-offsets.s
 	@$(XECHO) Generating $@
 	tools/scripts/make-asm-offsets $(obj)$(CPUDIR)/$(SOC)/asm-offsets.s $@
 
-$(obj)$(CPUDIR)/$(SOC)/asm-offsets.s:	$(obj)include/autoconf.mk.dep \
-	$(obj)include/spl-autoconf.mk \
-	$(obj)include/tpl-autoconf.mk
+$(obj)$(CPUDIR)/$(SOC)/asm-offsets.s: $(obj)include/config.h
 	@mkdir -p $(obj)$(CPUDIR)/$(SOC)
 	if [ -f $(src)$(CPUDIR)/$(SOC)/asm-offsets.c ];then \
 		$(CC) -DDO_DEPS_ONLY \
@@ -725,7 +696,7 @@ checkarmreloc: $(obj)u-boot
 
 $(VERSION_FILE):
 		@mkdir -p $(dir $(VERSION_FILE))
-		@( localvers='$(shell $(TOPDIR)/tools/setlocalversion $(TOPDIR))' ; \
+		@( localvers='$(shell $(TOPDIR)/scripts/setlocalversion $(TOPDIR))' ; \
 		   printf '#define PLAIN_VERSION "%s%s"\n' \
 			"$(U_BOOT_VERSION)" "$${localvers}" ; \
 		   printf '#define U_BOOT_VERSION "U-Boot %s%s"\n' \
@@ -780,9 +751,7 @@ $(obj).boards.depend:	boards.cfg
 #########################################################################
 
 clean:
-	@rm -f $(obj)examples/standalone/82559_eeprom			  \
-	       $(obj)examples/standalone/atmel_df_pow2			  \
-	       $(obj)examples/standalone/eepro100_eeprom		  \
+	@rm -f $(obj)examples/standalone/atmel_df_pow2			  \
 	       $(obj)examples/standalone/hello_world			  \
 	       $(obj)examples/standalone/interrupt			  \
 	       $(obj)examples/standalone/mem_to_mem_idma2intr		  \
@@ -792,10 +761,11 @@ clean:
 	       $(obj)examples/standalone/timer
 	@rm -f $(obj)examples/api/demo{,.bin}
 	@rm -f $(obj)tools/bmp_logo	   $(obj)tools/easylogo/easylogo  \
-	       $(obj)tools/env/{fw_printenv,fw_setenv}			  \
+	       $(obj)tools/env/fw_printenv				  \
 	       $(obj)tools/envcrc					  \
-	       $(obj)tools/gdb/{astest,gdbcont,gdbsend}			  \
+	       $(obj)tools/gdb/{gdbcont,gdbsend}			  \
 	       $(obj)tools/gen_eth_addr    $(obj)tools/img2srec		  \
+	       $(obj)tools/dump{env,}image		  \
 	       $(obj)tools/mk{env,}image   $(obj)tools/mpc86x_clk	  \
 	       $(obj)tools/mk{$(BOARD),}spl				  \
 	       $(obj)tools/mxsboot					  \
@@ -804,9 +774,7 @@ clean:
 	       $(obj)tools/proftool
 	@rm -f $(obj)board/cray/L1/{bootscript.c,bootscript.image}	  \
 	       $(obj)board/matrix_vision/*/bootscript.img		  \
-	       $(obj)board/voiceblue/eeprom 				  \
 	       $(obj)u-boot.lds						  \
-	       $(obj)arch/blackfin/cpu/bootrom-asm-offsets.[chs]	  \
 	       $(obj)arch/blackfin/cpu/init.{lds,elf}
 	@rm -f $(obj)include/bmp_logo.h
 	@rm -f $(obj)include/bmp_logo_data.h
@@ -841,7 +809,6 @@ clobber:	tidy
 	@rm -f $(obj)u-boot.ais
 	@rm -f $(obj)u-boot.dtb
 	@rm -f $(obj)u-boot.sb
-	@rm -f $(obj)u-boot.bd
 	@rm -f $(obj)u-boot.spr
 	@rm -f $(obj)nand_spl/{u-boot.{lds,lst},System.map}
 	@rm -f $(obj)nand_spl/{u-boot-nand_spl.lds,u-boot-spl,u-boot-spl.map}
