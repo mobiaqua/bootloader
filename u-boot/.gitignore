@@ -52,6 +52,7 @@
 # Generated files
 #
 
+cmdsflash
 *.depend*
 /LOG
 /errlog
