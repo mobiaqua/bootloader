@@ -2,7 +2,7 @@
 
 . env.sh
 
-if [ $1 = "" ]; then
+if [ "$1" = "" ]; then
 	echo "Please specify platform as argument."
 	exit 1
 fi
