@@ -14,9 +14,18 @@
 #include <common.h>
 #include <SA-1100.h>
 
+#include "egpio.h"
+
 DECLARE_GLOBAL_DATA_PTR;
 
 /* ------------------------------------------------------------------------- */
+
+int board_early_init_f(void)
+{
+	EGPIO = EGPIO_RS232_ON;
+
+	return 0;
+}
 
 int board_init(void)
 {
