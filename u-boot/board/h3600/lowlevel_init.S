@@ -92,7 +92,7 @@ smcnfg:       .long   0x00000000
 .globl lowlevel_init
 lowlevel_init:
 
-	ldr r0, MEM_BASE
+	ldr	r0, MEM_BASE
 
 	ldr	r1, msc0
 	str	r1, [r0, #MSC0]
@@ -107,20 +107,20 @@ lowlevel_init:
 	ldr	r1, mecr
 	str	r1, [r0, #MECR]
 
-	mov r4, #0x2000
+	mov	r4, #0x2000
 wait_sdclk:
-	subs    r4, r4, #1
-	bne     wait_sdclk
+	subs	r4, r4, #1
+	bne	wait_sdclk
 
-	ldr r1, mdcas00
-	str r1, [r0, #MDCAS00]
-	ldr r1, mdcas01
-	str r1, [r0, #MDCAS01]
-	ldr r1, mdcas02
-	str r1, [r0, #MDCAS02]
+	ldr	r1, mdcas00
+	str	r1, [r0, #MDCAS00]
+	ldr	r1, mdcas01
+	str	r1, [r0, #MDCAS01]
+	ldr	r1, mdcas02
+	str	r1, [r0, #MDCAS02]
 
-	ldr r1, mdrefr
-	str r1, [r0, #MDREFR]
+	ldr	r1, mdrefr
+	str	r1, [r0, #MDREFR]
 
 	ldr	r1, mdcnfg
 	str	r1, [r0, #MDCNFG]
@@ -130,9 +130,9 @@ wait_sdclk:
 	ldr	r3, [r2]
 .endr
 
-	ldr r2, [r0, #MDCNFG]
-	orr r2, r2, #MDCNFG_DE0
-	str r2, [r0, #MDCNFG]
+	ldr	r2, [r0, #MDCNFG]
+	orr	r2, r2, #MDCNFG_DE0
+	str	r2, [r0, #MDCNFG]
 	nop
 	nop
 
