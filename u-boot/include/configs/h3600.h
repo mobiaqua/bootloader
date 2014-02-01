@@ -10,6 +10,8 @@
 
 #define CONFIG_SYS_TEXT_BASE		0x00000000
 
+#define DEBUG				1
+
 /* we will never enable dcache, because we have to setup MMU first */
 #define CONFIG_SYS_DCACHE_OFF
 

@@ -15,6 +15,8 @@
 #define CONFIG_CPU_PXA25X		1
 #define CONFIG_BOARD_H2200
 
+#define DEBUG				1
+
 #define CONFIG_SYS_NO_FLASH
 
 #define CONFIG_NR_DRAM_BANKS		1
