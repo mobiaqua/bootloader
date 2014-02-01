@@ -70,14 +70,32 @@
 #define MECR_BSM1(v)        ((v & 0x1f) << 26)
 #define MECR_FAST1          (1 << 31)
 
-MEM_BASE:     .long   0xa0000000
+#define UTCR0      0x00
+#define UTCR1      0x04
+#define UTCR2      0x08
+#define UTCR3      0x0c
+#define UTDR       0x14
+#define UTSR0      0x1c
+#define UTSR1      0x20
+#define UTCR3_RXE  (1 << 0)
+#define UTCR3_TXE  (1 << 1)
+#define UTCR0_8BIT (1 << 3)
+#define UTCR0_1SB  (0 << 2)
+#define UTSR1_TBY  (1 << 0)
+#define UTSR1_TNF  (1 << 2)
+
+#define EGPIO_RS232_ON (1 << 7)
+
 MEM_START:    .long   0xc0000000
+MEM_BASE:     .long   0xa0000000
+EGPIO_BASE:   .long   0x49000000
+UART3_BASE:   .long   0x80050000
+
 mdcas00:      .long   0xaaaaaaa7
 mdcas01:      .long   0xaaaaaaaa
 mdcas02:      .long   0xaaaaaaaa
 mdrefr:       .long   (MDREFR_TRASR(1) | MDREFR_DRI(512) | MDREFR_E1PIN | MDREFR_K1RUN)
-mdcnfg:       .long   (MDCNFG_DE0 | MDCNFG_DTIM0 | MDCNFG_DWID0 | MDCNFG_DRAC0(5) \
-                      | MDCNFG_TRP0(3) | MDCNFG_TDL0(3) | MDCNFG_TWR0(3))
+mdcnfg:       .long   (MDCNFG_DTIM0 | MDCNFG_DRAC0(5) | MDCNFG_TRP0(3) | MDCNFG_TDL0(3) | MDCNFG_TWR0(3))
 msc0:         .long   ( ( (MSC_RT_ROMFLASH | MSC_RBW32 | MSC_RDF(14) | MSC_RDN(3)  | MSC_RRR(2)) <<  0 ) \
                       | ( (MSC_RT_ROMFLASH | MSC_RBW32 | MSC_RDF(31) | MSC_RDN(31) | MSC_RRR(7)) << 16 ) )
 msc1:         .long   ( ( (MSC_RT_ROMFLASH | MSC_RBW16 | MSC_RDF(31) | MSC_RDN(31) | MSC_RRR(7)) <<  0 ) \
@@ -88,9 +106,24 @@ mecr:         .long   ( MECR_BSIO0(10) | MECR_BSA0(10) | MECR_BSM0(6) | MECR_FAS
                       | MECR_BSIO1(10) | MECR_BSA1(10) | MECR_BSM1(6) | MECR_FAST1 )
 smcnfg:       .long   0x00000000
 
+init_str:
+	.ascii  "Starting U-Boot..."
+	.byte   0
 
+.align 4
+init_str_ptr:
+	.long  init_str
+
+.align 4
 .globl lowlevel_init
 lowlevel_init:
+
+	mov	r13, lr
+
+	bl	h3600_serial3_init
+	ldr	r0, init_str_ptr
+	bl	h3600_serial3_put_string
+
 
 	ldr	r0, MEM_BASE
 
@@ -136,4 +169,66 @@ wait_sdclk:
 	nop
 	nop
 
+	mov	pc, r13
+
+
+h3600_serial3_init:
+	ldr     r0, EGPIO_BASE
+	mov	r1, #EGPIO_RS232_ON
+	str	r1, [r0, #0]
+.rept	100
+	nop
+.endr
+	ldr	r0, UART3_BASE
+	mov	r1, #0x00
+	str	r1, [r0, #UTCR3]
+	mov	r1, #0xff
+	str	r1, [r0, #UTSR0]
+	mov	r1, #(UTCR0_8BIT | UTCR0_1SB)
+	str	r1, [r0, #UTCR0]
+	mov	r1, #0x00
+	str	r1, [r0, #UTCR1]
+	mov	r1, #1 // 115200
+	str	r1, [r0, #UTCR2]
+	mov	r1, #(UTCR3_RXE | UTCR3_TXE)
+	str	r1, [r0, #UTCR3]
+
 	mov	pc, lr
+
+
+.globl h3600_serial3_put_char
+h3600_serial3_put_char:
+	ldr	r1, UART3_BASE
+full:
+	ldr	r2, [r1, #UTSR1]
+	tst	r2, #UTSR1_TNF
+	beq	full
+	str	r0, [r1, #UTDR]
+busy:
+	ldr	r2, [r1, #UTSR1]
+	tst	r2, #UTSR1_TBY
+	bne	busy
+
+	mov	pc, lr
+
+.globl h3600_serial3_put_string
+h3600_serial3_put_string:
+	mov	r8, lr
+
+	mov	r4, r0
+	mov	r3, #0
+	mov	r0, #0
+next_char:
+	ldrb	r0, [r4, r3]
+	cmp	r0, #0
+	beq	end
+	bl	h3600_serial3_put_char
+	add	r3, #1
+	b	next_char
+end:
+	mov	r0, #'\r'
+	bl	h3600_serial3_put_char
+	mov	r0, #'\n'
+	bl	h3600_serial3_put_char
+
+	mov	pc, r8
