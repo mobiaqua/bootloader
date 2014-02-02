@@ -16,7 +16,6 @@ make CROSS_COMPILE=arm-linux-gnueabi- ${1}_config && {
 		echo "detect" >> cmdsflash
 		echo "poke 0x49000000 1" >> cmdsflash
 		echo "detectflash 0" >> cmdsflash
-		echo "eraseflash 0 2" >> cmdsflash
 		echo "flashmem 0 u-boot.bin" >> cmdsflash
 		echo "reset" >> cmdsflash
 		echo "quit" >> cmdsflash
