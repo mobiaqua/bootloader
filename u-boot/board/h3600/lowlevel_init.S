@@ -84,6 +84,7 @@
 #define UTSR1_TBY  (1 << 0)
 #define UTSR1_TNF  (1 << 2)
 
+#define EGPIO_VPP_ON   (1 << 0)
 #define EGPIO_RS232_ON (1 << 7)
 
 MEM_START:    .long   0xc0000000
@@ -174,7 +175,7 @@ wait_sdclk:
 
 h3600_serial3_init:
 	ldr     r0, EGPIO_BASE
-	mov	r1, #EGPIO_RS232_ON
+	mov	r1, #(EGPIO_RS232_ON | EGPIO_VPP_ON)
 	str	r1, [r0, #0]
 .rept	100
 	nop
