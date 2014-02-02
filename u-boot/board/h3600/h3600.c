@@ -22,7 +22,7 @@ DECLARE_GLOBAL_DATA_PTR;
 
 int board_early_init_f(void)
 {
-	EGPIO = EGPIO_RS232_ON;
+	EGPIO = EGPIO_RS232_ON | EGPIO_VPP_ON;
 
 	return 0;
 }
