@@ -175,7 +175,7 @@ wait_sdclk:
 
 h3600_serial3_init:
 	ldr     r0, EGPIO_BASE
-	mov	r1, #(EGPIO_RS232_ON | EGPIO_VPP_ON)
+	mov	r1, #(EGPIO_RS232_ON)
 	str	r1, [r0, #0]
 .rept	100
 	nop
