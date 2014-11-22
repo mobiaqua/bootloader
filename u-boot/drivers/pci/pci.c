@@ -323,7 +323,7 @@ int __pci_hose_bus_to_phys(struct pci_controller *hose,
 			continue;
 
 		if (bus_addr >= res->bus_start &&
-			bus_addr < res->bus_start + res->size) {
+			(bus_addr - res->bus_start) < res->size) {
 			*pa = (bus_addr - res->bus_start + res->phys_start);
 			return 0;
 		}
@@ -572,7 +572,7 @@ const char * pci_class_str(u8 class)
 }
 #endif /* CONFIG_CMD_PCI || CONFIG_PCI_SCAN_SHOW */
 
-int __pci_skip_dev(struct pci_controller *hose, pci_dev_t dev)
+__weak int pci_skip_dev(struct pci_controller *hose, pci_dev_t dev)
 {
 	/*
 	 * Check if pci device should be skipped in configuration
@@ -591,19 +591,15 @@ int __pci_skip_dev(struct pci_controller *hose, pci_dev_t dev)
 
 	return 0;
 }
-int pci_skip_dev(struct pci_controller *hose, pci_dev_t dev)
-	__attribute__((weak, alias("__pci_skip_dev")));
 
 #ifdef CONFIG_PCI_SCAN_SHOW
-int __pci_print_dev(struct pci_controller *hose, pci_dev_t dev)
+__weak int pci_print_dev(struct pci_controller *hose, pci_dev_t dev)
 {
 	if (dev == PCI_BDF(hose->first_busno, 0, 0))
 		return 0;
 
 	return 1;
 }
-int pci_print_dev(struct pci_controller *hose, pci_dev_t dev)
-	__attribute__((weak, alias("__pci_print_dev")));
 #endif /* CONFIG_PCI_SCAN_SHOW */
 
 int pci_hose_scan_bus(struct pci_controller *hose, int bus)
@@ -647,6 +643,10 @@ int pci_hose_scan_bus(struct pci_controller *hose, int bus)
 
 		pci_hose_read_config_word(hose, dev, PCI_DEVICE_ID, &device);
 		pci_hose_read_config_word(hose, dev, PCI_CLASS_DEVICE, &class);
+
+#ifdef CONFIG_PCI_FIXUP_DEV
+		board_pci_fixup_dev(hose, dev, vendor, device, class);
+#endif
 
 #ifdef CONFIG_PCI_SCAN_SHOW
 		indent++;

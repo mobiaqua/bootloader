@@ -944,7 +944,7 @@ static void parse_putc(const char c)
 		CURSOR_SET;
 }
 
-void video_putc(const char c)
+static void video_putc(struct stdio_dev *dev, const char c)
 {
 #ifdef CONFIG_CFB_CONSOLE_ANSI
 	int i;
@@ -1158,12 +1158,21 @@ void video_putc(const char c)
 		flush_cache(VIDEO_FB_ADRS, VIDEO_SIZE);
 }
 
-void video_puts(const char *s)
+static void video_puts(struct stdio_dev *dev, const char *s)
 {
+	int flush = cfb_do_flush_cache;
 	int count = strlen(s);
 
+	/* temporarily disable cache flush */
+	cfb_do_flush_cache = 0;
+
 	while (count--)
-		video_putc(*s++);
+		video_putc(dev, *s++);
+
+	if (flush) {
+		cfb_do_flush_cache = flush;
+		flush_cache(VIDEO_FB_ADRS, VIDEO_SIZE);
+	}
 }
 
 /*
@@ -1171,13 +1180,10 @@ void video_puts(const char *s)
  * video_set_lut() if they do not support 8 bpp format.
  * Implement weak default function instead.
  */
-void __video_set_lut(unsigned int index, unsigned char r,
+__weak void video_set_lut(unsigned int index, unsigned char r,
 		     unsigned char g, unsigned char b)
 {
 }
-
-void video_set_lut(unsigned int, unsigned char, unsigned char, unsigned char)
-	__attribute__ ((weak, alias("__video_set_lut")));
 
 #if defined(CONFIG_CMD_BMP) || defined(CONFIG_SPLASH_SCREEN)
 
@@ -1473,7 +1479,11 @@ int video_display_bitmap(ulong bmp_image, int x, int y)
 			printf("Error: malloc in gunzip failed!\n");
 			return 1;
 		}
-		if (gunzip(dst, CONFIG_SYS_VIDEO_LOGO_MAX_SIZE,
+		/*
+		 * NB: we need to force offset of +2
+		 * See doc/README.displaying-bmps
+		 */
+		if (gunzip(dst+2, CONFIG_SYS_VIDEO_LOGO_MAX_SIZE-2,
 			   (uchar *) bmp_image,
 			   &len) != 0) {
 			printf("Error: no valid bmp or bmp.gz image at %lx\n",
@@ -1489,7 +1499,7 @@ int video_display_bitmap(ulong bmp_image, int x, int y)
 		/*
 		 * Set addr to decompressed image
 		 */
-		bmp = (bmp_image_t *) dst;
+		bmp = (bmp_image_t *)(dst+2);
 
 		if (!((bmp->header.signature[0] == 'B') &&
 		      (bmp->header.signature[1] == 'M'))) {
@@ -2236,14 +2246,11 @@ static int video_init(void)
  * Implement a weak default function for boards that optionally
  * need to skip the video initialization.
  */
-int __board_video_skip(void)
+__weak int board_video_skip(void)
 {
 	/* As default, don't skip test */
 	return 0;
 }
-
-int board_video_skip(void)
-	__attribute__ ((weak, alias("__board_video_skip")));
 
 int drv_video_init(void)
 {
@@ -2275,8 +2282,6 @@ int drv_video_init(void)
 	console_dev.flags = DEV_FLAGS_OUTPUT | DEV_FLAGS_SYSTEM;
 	console_dev.putc = video_putc;	/* 'putc' function */
 	console_dev.puts = video_puts;	/* 'puts' function */
-	console_dev.tstc = NULL;	/* 'tstc' function */
-	console_dev.getc = NULL;	/* 'getc' function */
 
 #if !defined(CONFIG_VGA_AS_SINGLE_DEVICE)
 	/* Also init console device */

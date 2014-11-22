@@ -23,6 +23,7 @@ DECLARE_GLOBAL_DATA_PTR;
 #define CONFIG_SYS_UBOOT_START	CONFIG_SYS_TEXT_BASE
 #endif
 #ifndef CONFIG_SYS_MONITOR_LEN
+/* Unknown U-Boot size, let's assume it will not be more than 200 KB */
 #define CONFIG_SYS_MONITOR_LEN	(200 * 1024)
 #endif
 
@@ -61,6 +62,15 @@ __weak void spl_board_prepare_for_linux(void)
 	/* Nothing to do! */
 }
 
+void spl_set_header_raw_uboot(void)
+{
+	spl_image.size = CONFIG_SYS_MONITOR_LEN;
+	spl_image.entry_point = CONFIG_SYS_UBOOT_START;
+	spl_image.load_addr = CONFIG_SYS_TEXT_BASE;
+	spl_image.os = IH_OS_U_BOOT;
+	spl_image.name = "U-Boot";
+}
+
 void spl_parse_image_header(const struct image_header *header)
 {
 	u32 header_size = sizeof(struct image_header);
@@ -86,18 +96,13 @@ void spl_parse_image_header(const struct image_header *header)
 		spl_image.os = image_get_os(header);
 		spl_image.name = image_get_name(header);
 		debug("spl: payload image: %.*s load addr: 0x%x size: %d\n",
-			sizeof(spl_image.name), spl_image.name,
+			(int)sizeof(spl_image.name), spl_image.name,
 			spl_image.load_addr, spl_image.size);
 	} else {
 		/* Signature not found - assume u-boot.bin */
 		debug("mkimage signature not found - ih_magic = %x\n",
 			header->ih_magic);
-		/* Let's assume U-Boot will not be more than 200 KB */
-		spl_image.size = CONFIG_SYS_MONITOR_LEN;
-		spl_image.entry_point = CONFIG_SYS_UBOOT_START;
-		spl_image.load_addr = CONFIG_SYS_TEXT_BASE;
-		spl_image.os = IH_OS_U_BOOT;
-		spl_image.name = "U-Boot";
+		spl_set_header_raw_uboot();
 	}
 }
 
@@ -203,6 +208,16 @@ void board_init_r(gd_t *dummy1, ulong dummy2)
 #ifdef CONFIG_SPL_USBETH_SUPPORT
 	case BOOT_DEVICE_USBETH:
 		spl_net_load_image("usb_ether");
+		break;
+#endif
+#ifdef CONFIG_SPL_USB_SUPPORT
+	case BOOT_DEVICE_USB:
+		spl_usb_load_image();
+		break;
+#endif
+#ifdef CONFIG_SPL_SATA_SUPPORT
+	case BOOT_DEVICE_SATA:
+		spl_sata_load_image();
 		break;
 #endif
 	default:

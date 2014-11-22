@@ -6,7 +6,7 @@
  * 2004 (c) MontaVista Software, Inc.
  *
  * Copyright (C) 2014 Pawel Kolodziejski <aquadran at users.sourceforge.net>
- * - Added support for iPaq H3600
+ * - Added support for iPAQ H3600
  *
  * SPDX-License-Identifier:	GPL-2.0+
  */
@@ -22,7 +22,7 @@ DECLARE_GLOBAL_DATA_PTR;
 
 int board_early_init_f(void)
 {
-	EGPIO = EGPIO_RS232_ON | EGPIO_VPP_ON;
+	set_h3600_egpio(EGPIO_RS232_ON | EGPIO_VPP_ON);
 
 	return 0;
 }

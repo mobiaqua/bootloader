@@ -21,9 +21,15 @@
  * at the same time, so do it here.  When all drivers are
  * converted, this will go away.
  */
+#ifdef CONFIG_SPL_BUILD
+#if defined(CONFIG_NAND_FSL_ELBC) || defined(CONFIG_NAND_FSL_IFC)
+#define CONFIG_SYS_NAND_SELF_INIT
+#endif
+#else
 #if defined(CONFIG_NAND_FSL_ELBC) || defined(CONFIG_NAND_ATMEL)\
 	|| defined(CONFIG_NAND_FSL_IFC)
 #define CONFIG_SYS_NAND_SELF_INIT
+#endif
 #endif
 
 extern void nand_init(void);
@@ -161,3 +167,4 @@ __attribute__((noreturn)) void nand_boot(void);
 #define ENV_OFFSET_SIZE 8
 int get_nand_env_oob(nand_info_t *nand, unsigned long *result);
 #endif
+int spl_nand_erase_one(int block, int page);

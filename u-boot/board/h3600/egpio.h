@@ -28,5 +28,8 @@
 #define EGPIO_LCD_5V_ON		(1 << 14)  /* high - power 5V to LCD */
 #define EGPIO_LVDD_ON		(1 << 15)  /* high - power 9V and -6.5V to LCD */
 
+void set_h3600_egpio(unsigned int bits);
+void clear_h3600_egpio(unsigned int bits);
+
 #endif
 

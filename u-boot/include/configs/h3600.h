@@ -7,10 +7,12 @@
  */
 #define CONFIG_SA1110			1	/* This is an SA110 CPU */
 #define CONFIG_SYS_FLASH_PROTECTION	1
+#define CONFIG_SYS_GENERIC_BOARD
+#define CONFIG_BOARD_EARLY_INIT_F
 
 #define CONFIG_SYS_TEXT_BASE		0x00000000
 
-//#define DEBUG				1
+/*#define DEBUG				1*/
 
 /* we will never enable dcache, because we have to setup MMU first */
 #define CONFIG_SYS_DCACHE_OFF

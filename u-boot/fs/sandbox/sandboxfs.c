@@ -72,6 +72,19 @@ int sandbox_fs_ls(const char *dirname)
 	return 0;
 }
 
+int sandbox_fs_exists(const char *filename)
+{
+	ssize_t sz;
+
+	sz = os_get_filesize(filename);
+	return sz >= 0;
+}
+
+int sandbox_fs_size(const char *filename)
+{
+	return os_get_filesize(filename);
+}
+
 void sandbox_fs_close(void)
 {
 }

@@ -66,6 +66,7 @@ static inline void set_sctlr(unsigned int val)
 }
 
 void __asm_flush_dcache_all(void);
+void __asm_invalidate_dcache_all(void);
 void __asm_flush_dcache_range(u64 start, u64 end);
 void __asm_invalidate_tlb_all(void);
 void __asm_invalidate_icache_all(void);
@@ -76,6 +77,8 @@ void gic_init(void);
 void gic_send_sgi(unsigned long sgino);
 void wait_for_wakeup(void);
 void smp_kick_all_cpus(void);
+
+void flush_l3_cache(void);
 
 #endif	/* __ASSEMBLY__ */
 
@@ -182,6 +185,7 @@ enum dcache_option {
 	DCACHE_OFF = 0x12,
 	DCACHE_WRITETHROUGH = 0x1a,
 	DCACHE_WRITEBACK = 0x1e,
+	DCACHE_WRITEALLOC = 0x16,
 };
 
 /* Size of an MMU section */
@@ -197,7 +201,7 @@ enum {
  * \param size		size of memory region to change
  * \param option	dcache option to select
  */
-void mmu_set_region_dcache_behaviour(u32 start, int size,
+void mmu_set_region_dcache_behaviour(phys_addr_t start, size_t size,
 				     enum dcache_option option);
 
 /**

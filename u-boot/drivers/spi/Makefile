@@ -6,8 +6,16 @@
 #
 
 # There are many options which enable SPI, so make this library available
+ifdef CONFIG_DM_SPI
+obj-y += spi-uclass.o
+obj-$(CONFIG_SANDBOX) += spi-emul-uclass.o
+obj-$(CONFIG_SOFT_SPI) += soft_spi.o
+else
 obj-y += spi.o
+obj-$(CONFIG_SOFT_SPI) += soft_spi_legacy.o
+endif
 
+obj-$(CONFIG_EP93XX_SPI) += ep93xx_spi.o
 obj-$(CONFIG_ALTERA_SPI) += altera_spi.o
 obj-$(CONFIG_ANDES_SPI) += andes_spi.o
 obj-$(CONFIG_ARMADA100_SPI) += armada100_spi.o
@@ -29,14 +37,13 @@ obj-$(CONFIG_MXS_SPI) += mxs_spi.o
 obj-$(CONFIG_OC_TINY_SPI) += oc_tiny_spi.o
 obj-$(CONFIG_OMAP3_SPI) += omap3_spi.o
 obj-$(CONFIG_SANDBOX_SPI) += sandbox_spi.o
-obj-$(CONFIG_SOFT_SPI) += soft_spi.o
 obj-$(CONFIG_SH_SPI) += sh_spi.o
 obj-$(CONFIG_SH_QSPI) += sh_qspi.o
 obj-$(CONFIG_FSL_ESPI) += fsl_espi.o
-obj-$(CONFIG_FDT_SPI) += fdt_spi.o
 obj-$(CONFIG_TEGRA20_SFLASH) += tegra20_sflash.o
 obj-$(CONFIG_TEGRA20_SLINK) += tegra20_slink.o
 obj-$(CONFIG_TEGRA114_SPI) += tegra114_spi.o
 obj-$(CONFIG_TI_QSPI) += ti_qspi.o
 obj-$(CONFIG_XILINX_SPI) += xilinx_spi.o
 obj-$(CONFIG_ZYNQ_SPI) += zynq_spi.o
+obj-$(CONFIG_FSL_QSPI) += fsl_qspi.o

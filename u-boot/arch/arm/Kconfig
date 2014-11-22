@@ -1,0 +1,45 @@
+menu "ARM architecture"
+	depends on ARM
+
+config SYS_ARCH
+	default "arm"
+
+config ARM64
+	bool
+
+config HAS_VBAR
+        bool
+
+config CPU_ARM920T
+        bool
+
+config CPU_PXA
+        bool
+
+config CPU_SA1100
+        bool
+
+config SYS_CPU
+        default "arm920t" if CPU_ARM920T
+        default "pxa" if CPU_PXA
+        default "sa1100" if CPU_SA1100
+
+choice
+	prompt "Target select"
+
+config TARGET_H2200
+	bool "Support h2200"
+	select CPU_PXA
+
+config TARGET_H3600
+	bool "Support h3600 iPAQ"
+	select CPU_SA1100
+
+endchoice
+
+source "board/h2200/Kconfig"
+source "board/h3600/Kconfig"
+
+source "arch/arm/Kconfig.debug"
+
+endmenu

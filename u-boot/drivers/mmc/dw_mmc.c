@@ -107,7 +107,7 @@ static int dwmci_set_transfer_mode(struct dwmci_host *host,
 static int dwmci_send_cmd(struct mmc *mmc, struct mmc_cmd *cmd,
 		struct mmc_data *data)
 {
-	struct dwmci_host *host = (struct dwmci_host *)mmc->priv;
+	struct dwmci_host *host = mmc->priv;
 	ALLOC_CACHE_ALIGN_BUFFER(struct dwmci_idmac, cur_idmac,
 				 data ? DIV_ROUND_UP(data->blocks, 8) : 0);
 	int flags = 0, i;
@@ -119,7 +119,7 @@ static int dwmci_send_cmd(struct mmc *mmc, struct mmc_cmd *cmd,
 
 	while (dwmci_readl(host, DWMCI_STATUS) & DWMCI_BUSY) {
 		if (get_timer(start) > timeout) {
-			printf("Timeout on data busy\n");
+			printf("%s: Timeout on data busy\n", __func__);
 			return TIMEOUT;
 		}
 	}
@@ -177,14 +177,24 @@ static int dwmci_send_cmd(struct mmc *mmc, struct mmc_cmd *cmd,
 		}
 	}
 
-	if (i == retry)
+	if (i == retry) {
+		printf("%s: Timeout.\n", __func__);
 		return TIMEOUT;
+	}
 
 	if (mask & DWMCI_INTMSK_RTO) {
-		debug("Response Timeout..\n");
+		/*
+		 * Timeout here is not necessarily fatal. (e)MMC cards
+		 * will splat here when they receive CMD55 as they do
+		 * not support this command and that is exactly the way
+		 * to tell them apart from SD cards. Thus, this output
+		 * below shall be debug(). eMMC cards also do not favor
+		 * CMD8, please keep that in mind.
+		 */
+		debug("%s: Response Timeout.\n", __func__);
 		return TIMEOUT;
 	} else if (mask & DWMCI_INTMSK_RE) {
-		debug("Response Error..\n");
+		printf("%s: Response Error.\n", __func__);
 		return -1;
 	}
 
@@ -204,7 +214,7 @@ static int dwmci_send_cmd(struct mmc *mmc, struct mmc_cmd *cmd,
 		do {
 			mask = dwmci_readl(host, DWMCI_RINTSTS);
 			if (mask & (DWMCI_DATA_ERR | DWMCI_DATA_TOUT)) {
-				debug("DATA ERROR!\n");
+				printf("%s: DATA ERROR!\n", __func__);
 				return -1;
 			}
 		} while (!(mask & DWMCI_INTMSK_DTO));
@@ -232,20 +242,23 @@ static int dwmci_setup_bus(struct dwmci_host *host, u32 freq)
 	if ((freq == host->clock) || (freq == 0))
 		return 0;
 	/*
-	 * If host->get_mmc_clk didn't define,
+	 * If host->get_mmc_clk isn't defined,
 	 * then assume that host->bus_hz is source clock value.
-	 * host->bus_hz should be set from user.
+	 * host->bus_hz should be set by user.
 	 */
 	if (host->get_mmc_clk)
-		sclk = host->get_mmc_clk(host->dev_index);
+		sclk = host->get_mmc_clk(host);
 	else if (host->bus_hz)
 		sclk = host->bus_hz;
 	else {
-		printf("Didn't get source clock value..\n");
+		printf("%s: Didn't get source clock value.\n", __func__);
 		return -EINVAL;
 	}
 
-	div = DIV_ROUND_UP(sclk, 2 * freq);
+	if (sclk == freq)
+		div = 0;	/* bypass mode */
+	else
+		div = DIV_ROUND_UP(sclk, 2 * freq);
 
 	dwmci_writel(host, DWMCI_CLKENA, 0);
 	dwmci_writel(host, DWMCI_CLKSRC, 0);
@@ -257,7 +270,7 @@ static int dwmci_setup_bus(struct dwmci_host *host, u32 freq)
 	do {
 		status = dwmci_readl(host, DWMCI_CMD);
 		if (timeout-- < 0) {
-			printf("TIMEOUT error!!\n");
+			printf("%s: Timeout!\n", __func__);
 			return -ETIMEDOUT;
 		}
 	} while (status & DWMCI_CMD_START);
@@ -272,7 +285,7 @@ static int dwmci_setup_bus(struct dwmci_host *host, u32 freq)
 	do {
 		status = dwmci_readl(host, DWMCI_CMD);
 		if (timeout-- < 0) {
-			printf("TIMEOUT error!!\n");
+			printf("%s: Timeout!\n", __func__);
 			return -ETIMEDOUT;
 		}
 	} while (status & DWMCI_CMD_START);
@@ -285,9 +298,9 @@ static int dwmci_setup_bus(struct dwmci_host *host, u32 freq)
 static void dwmci_set_ios(struct mmc *mmc)
 {
 	struct dwmci_host *host = (struct dwmci_host *)mmc->priv;
-	u32 ctype;
+	u32 ctype, regs;
 
-	debug("Buswidth = %d, clock: %d\n",mmc->bus_width, mmc->clock);
+	debug("Buswidth = %d, clock: %d\n", mmc->bus_width, mmc->clock);
 
 	dwmci_setup_bus(host, mmc->clock);
 	switch (mmc->bus_width) {
@@ -304,13 +317,21 @@ static void dwmci_set_ios(struct mmc *mmc)
 
 	dwmci_writel(host, DWMCI_CTYPE, ctype);
 
+	regs = dwmci_readl(host, DWMCI_UHS_REG);
+	if (mmc->card_caps & MMC_MODE_DDR_52MHz)
+		regs |= DWMCI_DDR_MODE;
+	else
+		regs &= DWMCI_DDR_MODE;
+
+	dwmci_writel(host, DWMCI_UHS_REG, regs);
+
 	if (host->clksel)
 		host->clksel(host);
 }
 
 static int dwmci_init(struct mmc *mmc)
 {
-	struct dwmci_host *host = (struct dwmci_host *)mmc->priv;
+	struct dwmci_host *host = mmc->priv;
 
 	if (host->board_init)
 		host->board_init(host);
@@ -318,12 +339,12 @@ static int dwmci_init(struct mmc *mmc)
 	dwmci_writel(host, DWMCI_PWREN, 1);
 
 	if (!dwmci_wait_reset(host, DWMCI_RESET_ALL)) {
-		debug("%s[%d] Fail-reset!!\n",__func__,__LINE__);
+		printf("%s[%d] Fail-reset!!\n", __func__, __LINE__);
 		return -1;
 	}
 
 	/* Enumerate at 400KHz */
-	dwmci_setup_bus(host, mmc->f_min);
+	dwmci_setup_bus(host, mmc->cfg->f_min);
 
 	dwmci_writel(host, DWMCI_RINTSTS, 0xFFFFFFFF);
 	dwmci_writel(host, DWMCI_INTMASK, 0);
@@ -343,41 +364,37 @@ static int dwmci_init(struct mmc *mmc)
 	return 0;
 }
 
+static const struct mmc_ops dwmci_ops = {
+	.send_cmd	= dwmci_send_cmd,
+	.set_ios	= dwmci_set_ios,
+	.init		= dwmci_init,
+};
+
 int add_dwmci(struct dwmci_host *host, u32 max_clk, u32 min_clk)
 {
-	struct mmc *mmc;
-	int err = 0;
+	host->cfg.name = host->name;
+	host->cfg.ops = &dwmci_ops;
+	host->cfg.f_min = min_clk;
+	host->cfg.f_max = max_clk;
 
-	mmc = calloc(sizeof(struct mmc), 1);
-	if (!mmc) {
-		printf("mmc calloc fail!\n");
-		return -1;
-	}
+	host->cfg.voltages = MMC_VDD_32_33 | MMC_VDD_33_34 | MMC_VDD_165_195;
 
-	mmc->priv = host;
-	host->mmc = mmc;
-
-	sprintf(mmc->name, "%s", host->name);
-	mmc->send_cmd = dwmci_send_cmd;
-	mmc->set_ios = dwmci_set_ios;
-	mmc->init = dwmci_init;
-	mmc->f_min = min_clk;
-	mmc->f_max = max_clk;
-
-	mmc->voltages = MMC_VDD_32_33 | MMC_VDD_33_34 | MMC_VDD_165_195;
-
-	mmc->host_caps = host->caps;
+	host->cfg.host_caps = host->caps;
 
 	if (host->buswidth == 8) {
-		mmc->host_caps |= MMC_MODE_8BIT;
-		mmc->host_caps &= ~MMC_MODE_4BIT;
+		host->cfg.host_caps |= MMC_MODE_8BIT;
+		host->cfg.host_caps &= ~MMC_MODE_4BIT;
 	} else {
-		mmc->host_caps |= MMC_MODE_4BIT;
-		mmc->host_caps &= ~MMC_MODE_8BIT;
+		host->cfg.host_caps |= MMC_MODE_4BIT;
+		host->cfg.host_caps &= ~MMC_MODE_8BIT;
 	}
-	mmc->host_caps |= MMC_MODE_HS | MMC_MODE_HS_52MHz | MMC_MODE_HC;
+	host->cfg.host_caps |= MMC_MODE_HS | MMC_MODE_HS_52MHz | MMC_MODE_HC;
 
-	err = mmc_register(mmc);
+	host->cfg.b_max = CONFIG_SYS_MMC_MAX_BLK_COUNT;
 
-	return err;
+	host->mmc = mmc_create(&host->cfg, host);
+	if (host->mmc == NULL)
+		return -1;
+
+	return 0;
 }

@@ -5,7 +5,7 @@
 # SPDX-License-Identifier:	GPL-2.0+
 #
 
-#CFLAGS += -DDEBUG
+#ccflags-y += -DDEBUG
 
 obj-$(CONFIG_RTC_AT91SAM9_RTT) += at91sam9_rtt.o
 obj-$(CONFIG_RTC_BFIN) += bfin_rtc.o
@@ -16,6 +16,7 @@ obj-$(CONFIG_RTC_DS1302) += ds1302.o
 obj-$(CONFIG_RTC_DS1306) += ds1306.o
 obj-$(CONFIG_RTC_DS1307) += ds1307.o
 obj-$(CONFIG_RTC_DS1338) += ds1307.o
+obj-$(CONFIG_RTC_DS1339) += ds1307.o
 obj-$(CONFIG_RTC_DS1337) += ds1337.o
 obj-$(CONFIG_RTC_DS1374) += ds1374.o
 obj-$(CONFIG_RTC_DS1388) += ds1337.o
