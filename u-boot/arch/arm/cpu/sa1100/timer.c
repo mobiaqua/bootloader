@@ -1,78 +1,57 @@
 /*
- * (C) Copyright 2002
- * Sysgo Real-Time Solutions, GmbH <www.elinos.com>
- * Marius Groeger <mgroeger@sysgo.de>
+ * Copyright (C) 2011 Marek Vasut <marek.vasut@gmail.com>
  *
- * (C) Copyright 2002
- * Sysgo Real-Time Solutions, GmbH <www.elinos.com>
- * Alex Zuepke <azu@sysgo.de>
+ * Based on PXA timer.c code
  *
  * SPDX-License-Identifier:	GPL-2.0+
  */
 
 #include <common.h>
 #include <SA-1100.h>
+#include <div64.h>
+
+#define TIMER_LOAD_VAL	0xffffffff
+#define TIMER_FREQ_HZ	3686400
+
+static unsigned long long tick_to_time(unsigned long long tick)
+{
+	return lldiv(tick * CONFIG_SYS_HZ, TIMER_FREQ_HZ);
+}
+
+static unsigned long long us_to_tick(unsigned long long us)
+{
+	return lldiv(us * TIMER_FREQ_HZ, 1000000);
+}
 
 int timer_init (void)
 {
+	OSCR = 0;
 	return 0;
 }
 
 ulong get_timer (ulong base)
 {
-	return get_timer_masked ();
+	return tick_to_time(get_ticks()) - base;
 }
 
 void __udelay (unsigned long usec)
 {
-	udelay_masked (usec);
+	unsigned long long tmp;
+	ulong tmo;
+
+	tmo = us_to_tick(usec);
+	tmp = get_ticks() + tmo;	/* get current timestamp */
+
+	while (get_ticks() < tmp)	/* loop till event */
+		/*NOP*/;
 }
 
-ulong get_timer_masked (void)
+unsigned long long get_ticks(void)
 {
 	return OSCR;
 }
 
-void udelay_masked (unsigned long usec)
-{
-	ulong tmo;
-	ulong endtime;
-	signed long diff;
-
-	if (usec >= 1000) {
-		tmo = usec / 1000;
-		tmo *= CONFIG_SYS_HZ;
-		tmo /= 1000;
-	} else {
-		tmo = usec * CONFIG_SYS_HZ;
-		tmo /= (1000*1000);
-	}
-
-	endtime = get_timer_masked () + tmo;
-
-	do {
-		ulong now = get_timer_masked ();
-		diff = endtime - now;
-	} while (diff >= 0);
-}
-
-/*
- * This function is derived from PowerPC code (read timebase as long long).
- * On ARM it just returns the timer value.
- */
-unsigned long long get_ticks(void)
-{
-	return get_timer(0);
-}
-
-/*
- * This function is derived from PowerPC code (timebase clock frequency).
- * On ARM it returns the number of timer ticks per second.
- */
 ulong get_tbclk (void)
 {
-	ulong tbclk;
-
-	tbclk = CONFIG_SYS_HZ;
-	return tbclk;
+	return TIMER_FREQ_HZ;
 }
