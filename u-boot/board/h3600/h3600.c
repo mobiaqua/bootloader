@@ -23,6 +23,8 @@ DECLARE_GLOBAL_DATA_PTR;
 int board_early_init_f(void)
 {
 	set_h3600_egpio(EGPIO_RS232_ON | EGPIO_VPP_ON);
+	GPCR = 0x0fffffff;
+	GPDR = 0;
 
 	return 0;
 }
