@@ -54,7 +54,7 @@
 #undef CONFIG_BOOTM_VXWORKS
 
 #define CONFIG_BOOTDELAY	5
-#define CONFIG_BOOTARGS		"root=/dev/hda1 console=ttySA0,115200n8 console=tty1"
+#define CONFIG_BOOTARGS		"root=/dev/mtdblock0 console=ttySA0,115200n8 console=tty1"
 #define CONFIG_BOOTCOMMAND	"run boot_kernel"
 #define CONFIG_SYS_AUTOLOAD	"n"	/* No autoload */
 #define CONFIG_SYS_LOAD_ADDR	CONFIG_SYS_SDRAM_BASE
@@ -63,7 +63,7 @@
  * Miscellaneous configurable options
  */
 #define CONFIG_SYS_LONGHELP	/* undef to save memory */
-#define CONFIG_SYS_PROMPT		"HP iPAQ 3600# "
+#define CONFIG_SYS_PROMPT		"h3600# "
 #define CONFIG_SYS_CBSIZE		256	/* console buffsize */
 #define CONFIG_SYS_PBSIZE		(256 + sizeof(CONFIG_SYS_PROMPT) + 16)
 #define CONFIG_SYS_MAXARGS		16	/* max number of command args */
@@ -87,19 +87,13 @@
 #define CONFIG_SYS_MONITOR_BASE		0x00000000
 #define CONFIG_FLASH_SHOW_PROGRESS	1
 
-/* Environment */
-#define CONFIG_ENV_IS_IN_FLASH	1
-#define CONFIG_ENV_ADDR		0x00040000
-#define CONFIG_ENV_OFFSET	0x00040000
-#define CONFIG_ENV_SIZE		0x00040000
-#define CONFIG_ENV_SECT_SIZE	0x00040000
-#define CONFIG_ENV_OVERWRITE	1
+#define CONFIG_ENV_SIZE			0x00040000
+#define CONFIG_ENV_IS_NOWHERE
 
 /*
   Monitor -     0x00000000 - 0x00040000 (256kb)
-  Environment - 0x00040000 - 0x00080000 (256kb)
-  Kernel -      0x00080000 - 0x00380000 (3mb)
-  Rootfs -      0x00380000 - 0x........ (rest)
+  Kernel -      0x00040000 - 0x00340000 (3mb)
+  Rootfs -      0x00340000 - 0x........ (rest)
 */
 
 #define CONFIG_NR_DRAM_BANKS		1
@@ -107,20 +101,20 @@
 #define CONFIG_SYS_INIT_SP_ADDR		(CONFIG_SYS_SDRAM_BASE + 0x1000 - \
 					GENERATED_GBL_DATA_SIZE)
 
-#define PHYS_SDRAM_1			0xc0000000	/* SDRAM Bank #1 */
+#define PHYS_SDRAM_1			0xC0000000	/* SDRAM Bank #1 */
 #define PHYS_SDRAM_1_SIZE		0x02000000	/* 32 MB */
 
 #define CONFIG_CMD_MTDPARTS
 #define CONFIG_MTD_DEVICE
 #define CONFIG_FLASH_CFI_MTD
 #define MTDIDS_DEFAULT		"nor0=h3600-0"
-#define MTDPARTS_DEFAULT	"mtdparts=h3600-0:256k(u-boot),256k(env),"\
-				"3m(kernel),-(user);"
+#define MTDPARTS_DEFAULT	"mtdparts=h3600-0:256k(u-boot),3m(kernel),-(user);"
 
 #define	CONFIG_EXTRA_ENV_SETTINGS				\
-	"flash_kernel=protect off all; "				\
-	"erase 00080000 0037ffff;cp.b c0000000 00080000 00300000;\0"	\
-	"flash_uboot=protect off all; "					\
+	"copy_kernel=pinit on;ide reset;fatload ide 0:1 c0000000 uImage.bin;\0"		\
+	"flash_kernel=protect off 00040000 0033ffff; "		\
+	"erase 00040000 0033ffff;cp.b c0000000 00040000 00300000;\0"	\
+	"flash_uboot=protect off 00000000 0003ffff; "			\
 	"erase 00000000 0003ffff;cp.b c0000000 00000000 00040000;\0"	\
-	"boot_kernel=cp.b 00080000 c0000000 00300000;bootm;\0"
+	"boot_kernel=cp.b 00040000 c0000000 00300000;bootm;\0"
 #endif /* __CONFIG_H */
