@@ -11,7 +11,7 @@
 
 DECLARE_GLOBAL_DATA_PTR;
 
-static unsigned int h3600_egpio;
+static unsigned int h3600_egpio = EGPIO_RS232_ON | EGPIO_VPP_ON;
 
 void set_h3600_egpio(unsigned int bits)
 {
