@@ -97,7 +97,7 @@ int do_ide(cmd_tbl_t *cmdtp, int flag, int argc, char *const argv[])
 	case 2:
 		if (strncmp(argv[1], "res", 3) == 0) {
 			puts("\nReset IDE"
-#ifdef CONFIG_IDE_8xx_DIRECT
+#if defined(CONFIG_IDE_8xx_DIRECT) || defined(CONFIG_IDE_PCMCIA)
 			     " on PCMCIA " PCMCIA_SLOT_MSG
 #endif
 			     ": ");
@@ -317,7 +317,7 @@ void ide_init(void)
 	unsigned char c;
 	int i, bus;
 
-#ifdef CONFIG_IDE_8xx_PCCARD
+#if defined(CONFIG_IDE_8xx_PCCARD) || defined(CONFIG_IDE_PCMCIA)
 	extern int ide_devices_found;	/* Initialized in check_ide_device() */
 #endif /* CONFIG_IDE_8xx_PCCARD */
 
@@ -359,7 +359,7 @@ void ide_init(void)
 			bus * (CONFIG_SYS_IDE_MAXDEVICE /
 			       CONFIG_SYS_IDE_MAXBUS);
 
-#ifdef CONFIG_IDE_8xx_PCCARD
+#if defined(CONFIG_IDE_8xx_PCCARD) || defined(CONFIG_IDE_PCMCIA)
 		/* Skip non-ide devices from probing */
 		if ((ide_devices_found & (1 << bus)) == 0) {
 			ide_led((LED_IDE1 | LED_IDE2), 0);	/* LED's off */

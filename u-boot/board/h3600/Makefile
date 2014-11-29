@@ -9,4 +9,5 @@
 
 obj-y	:= h3600.o
 obj-y	+= egpio.o
+obj-y	+= pcmcia.o
 obj-y	+= lowlevel_init.o

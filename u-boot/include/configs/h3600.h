@@ -10,6 +10,11 @@
 #define CONFIG_SYS_GENERIC_BOARD
 #define CONFIG_BOARD_EARLY_INIT_F
 
+#define CONFIG_PCMCIA
+#define CONFIG_PCMCIA_SLOT_A
+#define CONFIG_IDE_PCMCIA
+#define CONFIG_IDE_RESET
+
 #define CONFIG_SYS_TEXT_BASE		0x00000000
 
 /*#define DEBUG				1*/
@@ -46,7 +51,13 @@
 #define CONFIG_CMD_RUN
 #define CONFIG_CMD_SAVEENV
 #define CONFIG_CMD_JFFS2
+#define CONFIG_CMD_FAT
+#define CONFIG_CMD_FS_GENERIC
 #define CONFIG_CMD_MEMORY
+#define CONFIG_CMD_IDE
+#define CONFIG_CMD_PCMCIA
+
+#define CONFIG_DOS_PARTITION
 
 #undef CONFIG_BOOTM_NETBSD
 #undef CONFIG_BOOTM_PLAN9
@@ -73,6 +84,23 @@
 
 #define CONFIG_SYS_CPUSPEED		0x0a /* core clock 206MHz */
 #define CONFIG_SYS_BAUDRATE_TABLE	{ 19200, 38400, 57600, 115200 }
+
+#define	__io
+
+#define CONFIG_SYS_PCMCIA_IO_BASE_ADDR	0x20000000 /* this IO space for pcmcia slot 0 address */
+#define CONFIG_SYS_PCMCIA_MEM_BASE_ADDR	0x2C000000 /* this memory space for pcmcia slot 0 address */
+
+#define CONFIG_SYS_PCMCIA_MEM_ADDR	0x28000000 /* it's actually Attributes Space slot 0 address, */
+#define CONFIG_SYS_PCMCIA_MEM_SIZE	0x04000000 /* used by cmd_pcmcia.c code and to prevent modify file */
+
+#define CONFIG_SYS_IDE_MAXBUS		1 /* max. 1 IDE busses */
+#define CONFIG_SYS_IDE_MAXDEVICE	(CONFIG_SYS_IDE_MAXBUS) /* max. 1 drives per IDE bus */
+
+#define CONFIG_SYS_ATA_BASE_ADDR	CONFIG_SYS_PCMCIA_MEM_BASE_ADDR
+#define CONFIG_SYS_ATA_IDE0_OFFSET	0x0000
+#define CONFIG_SYS_ATA_DATA_OFFSET	0x0400 /* Offset for data I/O */
+#define CONFIG_SYS_ATA_REG_OFFSET	0x0000 /* Offset for normal register access */
+#define CONFIG_SYS_ATA_ALT_OFFSET	0x0000 /* Offset for alternate registers */
 
 #define CONFIG_SYS_FLASH_CFI		1
 #define CONFIG_FLASH_CFI_DRIVER		1

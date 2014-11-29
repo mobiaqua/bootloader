@@ -87,7 +87,7 @@ U_BOOT_CMD(
 #define	CHECK_IDE_DEVICE
 #endif
 
-#if	defined(CONFIG_PXA_PCMCIA)
+#if	defined(CONFIG_PXA_PCMCIA) || defined(CONFIG_SA1110)
 #define	CHECK_IDE_DEVICE
 #endif
 
