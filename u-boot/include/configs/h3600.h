@@ -67,7 +67,7 @@
 #define CONFIG_BOOTDELAY	5
 #define CONFIG_BOOTARGS		"root=/dev/mtdblock0 console=tty1 kgdbwait kgdboc=ttySA0,115200n8"
 /*#define CONFIG_BOOTARGS		"root=/dev/mtdblock0 console=ttySA0,115200n8 console=tty1"*/
-#define CONFIG_BOOTCOMMAND	"run boot_kernel"
+#define CONFIG_BOOTCOMMAND	"run copy_kernel;run boot_kernel"
 #define CONFIG_SYS_AUTOLOAD	"n"	/* No autoload */
 #define CONFIG_SYS_LOAD_ADDR	CONFIG_SYS_SDRAM_BASE
 
