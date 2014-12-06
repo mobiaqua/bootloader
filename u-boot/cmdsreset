@@ -1,0 +1,5 @@
+cable JTAGkey
+detect
+detectflash 0
+reset
+quit
