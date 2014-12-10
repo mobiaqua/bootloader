@@ -65,9 +65,9 @@
 #undef CONFIG_BOOTM_VXWORKS
 
 #define CONFIG_BOOTDELAY	1
-/*#define CONFIG_BOOTARGS	"root=/dev/mtdblock0 console=ttySA0,115200n8 console=tty1"*/
+/*#define CONFIG_BOOTARGS	"root=/dev/mtdblock0 console=ttySA0,115200n8 console=tty1 consoleblank=0"*/
 /*#define CONFIG_BOOTCOMMAND	"run boot_kernel"*/
-#define CONFIG_BOOTARGS		"root=/dev/mtdblock0 console=tty1 loglevel=7 console=ttySA0,115200n8 kgdbwait kgdboc=ttySA0,115200"
+#define CONFIG_BOOTARGS		"root=/dev/mtdblock0 console=tty1 console=ttySA0,115200n8 consoleblank=0 loglevel=7"
 #define CONFIG_BOOTCOMMAND	"run copy_kernel;bootm"
 #define CONFIG_SYS_AUTOLOAD	"n"	/* No autoload */
 #define CONFIG_SYS_LOAD_ADDR	CONFIG_SYS_SDRAM_BASE
