@@ -65,10 +65,10 @@
 #undef CONFIG_BOOTM_VXWORKS
 
 #define CONFIG_BOOTDELAY	1
-/*#define CONFIG_BOOTARGS	"root=/dev/mtdblock0 console=ttySA0,115200n8 console=tty1 consoleblank=0"*/
-/*#define CONFIG_BOOTCOMMAND	"run boot_kernel"*/
-#define CONFIG_BOOTARGS		"root=/dev/mtdblock0 console=tty1 console=ttySA0,115200n8 consoleblank=0 loglevel=7"
-#define CONFIG_BOOTCOMMAND	"run copy_kernel;bootm"
+#define CONFIG_BOOTARGS	"root=/dev/mtdblock2 rootfstype=jffs2 ro console=ttySA0,115200n8 console=tty1 consoleblank=0"
+#define CONFIG_BOOTCOMMAND	"run boot_kernel"
+/*#define CONFIG_BOOTARGS		"root=/dev/mtdblock2 rootfstype=jffs2 ro console=tty1 console=ttySA0,115200n8 consoleblank=0 loglevel=7"*/
+/*#define CONFIG_BOOTCOMMAND	"run copy_kernel;bootm"*/
 #define CONFIG_SYS_AUTOLOAD	"n"	/* No autoload */
 #define CONFIG_SYS_LOAD_ADDR	CONFIG_SYS_SDRAM_BASE
 
@@ -141,10 +141,17 @@
 #define MTDPARTS_DEFAULT	"mtdparts=h3600-0:256k(u-boot),3m(kernel),-(user);"
 
 #define	CONFIG_EXTRA_ENV_SETTINGS				\
+	"install_uboot=run copy_uboot;run flash_uboot;\0"	\
+	"copy_uboot=pinit on;ide reset;fatload ide 0:1 c0000000 u-boot.bin;\0"		\
+	"flash_uboot=protect off 00000000 0003ffff; "			\
+	"erase 00000000 0003ffff;cp.b c0000000 00000000 00040000;\0"	\
+	"install_kernel=run copy_kernel;run flash_kernel;\0"	\
 	"copy_kernel=pinit on;ide reset;fatload ide 0:1 c0000000 uImage.bin;\0"		\
 	"flash_kernel=protect off 00040000 0033ffff; "		\
 	"erase 00040000 0033ffff;cp.b c0000000 00040000 00300000;\0"	\
-	"flash_uboot=protect off 00000000 0003ffff; "			\
-	"erase 00000000 0003ffff;cp.b c0000000 00000000 00040000;\0"	\
+	"install_rootfs=run copy_rootfs;run flash_rootfs;\0"	\
+	"copy_rootfs=pinit on;ide reset;fatload ide 0:1 c0000000 rootfs.jffs2;\0"	\
+	"flash_rootfs=protect off 00340000 00ffffff; "			\
+	"erase 00340000 00ffffff;cp.b c0000000 00340000 00cc0000;\0"	\
 	"boot_kernel=cp.b 00040000 c0000000 00300000;bootm;\0"
 #endif /* __CONFIG_H */
