@@ -84,6 +84,21 @@
 #define UTSR1_TBY  (1 << 0)
 #define UTSR1_TNF  (1 << 2)
 
+#define RCSR       0x04
+#define RCSR_HWR   (1 << 0)
+#define RCSR_SWR   (1 << 1)
+#define RCSR_WDR   (1 << 2)
+#define RCSR_SMR   (1 << 3)
+
+#define PSSR       0x04
+#define PSSR_SSS   (1 << 0)
+#define PSSR_BFS   (1 << 1)
+#define PSSR_VFS   (1 << 2)
+#define PSSR_DH    (1 << 3)
+#define PSSR_PH    (1 << 4)
+
+#define PSPR       0x08
+
 #define EGPIO_VPP_ON   (1 << 0)
 #define EGPIO_RS232_ON (1 << 7)
 
@@ -91,6 +106,9 @@ MEM_START:    .long   0xc0000000
 MEM_BASE:     .long   0xa0000000
 EGPIO_BASE:   .long   0x49000000
 UART3_BASE:   .long   0x80050000
+RC_BASE:      .long   0x90030000
+PM_BASE:      .long   0x90020000
+
 
 mdcas00:      .long   0xaaaaaaa7
 mdcas01:      .long   0xaaaaaaaa
@@ -141,10 +159,54 @@ lowlevel_init:
 	ldr	r1, mecr
 	str	r1, [r0, #MECR]
 
+
+	ldr	r0, RC_BASE
+	ldr	r1, [r0, #RCSR]
+	and	r1, r1, #RCSR_SMR
+	teq	r1, #RCSR_SMR
+	bne	notwakeup
+wakeup:
+	mov	r1, #RCSR_SMR
+	str	r1, [r0]
+
+	ldr	r0, PM_BASE
+	mov	r1, #(PSSR_PH | PSSR_DH)
+	str	r1, [r0, #PSSR]
+
+	ldr	r4, [r0, #PSPR]
+
+	ldr	r0, MEM_BASE
+	ldr	r1, mdcas00
+	str	r1, [r0, #MDCAS00]
+	ldr	r1, mdcas01
+	str	r1, [r0, #MDCAS01]
+	ldr	r1, mdcas02
+	str	r1, [r0, #MDCAS02]
+
+	ldr	r1, [r0, #MDREFR]
+	bic	r1, r1, #MDREFR_EAPD | MDREFR_KAPD
+	orr	r1, r1, #MDREFR_K1RUN
+	str	r1, [r0, #MDREFR]
+	bic	r1, r1, #MDREFR_SLFRSH
+	str	r1, [r0, #MDREFR]
+	orr	r1, r1, #MDREFR_E1PIN
+	str	r1, [r0, #MDREFR]
+	ldr	r1, mdrefr
+	str	r1, [r0, #MDREFR]
+
+	ldr	r1, mdcnfg
+	orr	r1, r1, #MDCNFG_DE0
+	str	r1, [r0, #MDCNFG]
+
+	mov	pc, r4
+
+notwakeup:
 	mov	r4, #0x2000
 wait_sdclk:
 	subs	r4, r4, #1
 	bne	wait_sdclk
+
+	ldr	r0, MEM_BASE
 
 	ldr	r1, mdcas00
 	str	r1, [r0, #MDCAS00]
