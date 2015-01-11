@@ -5,7 +5,7 @@
  *		       Jan-Derk Bakker (J.D.Bakker@its.tudelft.nl)
  * 2004 (c) MontaVista Software, Inc.
  *
- * Copyright (C) 2014 Pawel Kolodziejski <aquadran at users.sourceforge.net>
+ * Copyright (C) 2014-2015 Pawel Kolodziejski <aquadran at users.sourceforge.net>
  * - Added support for iPaq H3600
  *
  * SPDX-License-Identifier:	GPL-2.0+
