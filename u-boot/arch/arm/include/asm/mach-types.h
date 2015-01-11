@@ -48,6 +48,7 @@ extern unsigned int __machine_arch_type;
 #define MACH_TYPE_PT_SYSTEM3           112
 #define MACH_TYPE_AUTCPU12             118
 #define MACH_TYPE_H3100                136
+#define MACH_TYPE_H3800                137
 #define MACH_TYPE_COLLIE               146
 #define MACH_TYPE_BADGE4               148
 #define MACH_TYPE_FORTUNET             152
@@ -1251,6 +1252,18 @@ extern unsigned int __machine_arch_type;
 # define machine_is_h3600()	(machine_arch_type == MACH_TYPE_H3600)
 #else
 # define machine_is_h3600()	(0)
+#endif
+
+#ifdef CONFIG_SA1100_H3800
+# ifdef machine_arch_type
+#  undef machine_arch_type
+#  define machine_arch_type	__machine_arch_type
+# else
+#  define machine_arch_type	MACH_TYPE_H3800
+# endif
+# define machine_is_h3800()	(machine_arch_type == MACH_TYPE_H3800)
+#else
+# define machine_is_h3800()	(0)
 #endif
 
 #ifdef CONFIG_ARCH_P720T

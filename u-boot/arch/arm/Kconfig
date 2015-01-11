@@ -35,10 +35,15 @@ config TARGET_H3600
 	bool "Support h3600 iPAQ"
 	select CPU_SA1100
 
+config TARGET_H3800
+	bool "Support h3800 iPAQ"
+	select CPU_SA1100
+
 endchoice
 
 source "board/h2200/Kconfig"
 source "board/h3600/Kconfig"
+source "board/h3800/Kconfig"
 
 source "arch/arm/Kconfig.debug"
 

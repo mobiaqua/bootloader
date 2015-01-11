@@ -1,0 +1,9 @@
+if TARGET_H3800
+
+config SYS_BOARD
+	default "h3800"
+
+config SYS_CONFIG_NAME
+	default "h3800"
+
+endif
