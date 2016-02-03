@@ -1,10 +1,23 @@
+config CREATE_ARCH_SYMLINK
+	bool
+
+config HAVE_GENERIC_BOARD
+	bool
+
+config SYS_GENERIC_BOARD
+	bool
+	depends on HAVE_GENERIC_BOARD
+
 choice
 	prompt "Architecture select"
 	default ARM
 
 config ARM
 	bool "ARM architecture"
-	select HAVE_PRIVATE_LIBGCC
+	select CREATE_ARCH_SYMLINK
+	select HAVE_PRIVATE_LIBGCC if !ARM64
+	select HAVE_GENERIC_BOARD
+	select SYS_GENERIC_BOARD
 	select SUPPORT_OF_CONTROL
 
 endchoice

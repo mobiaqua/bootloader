@@ -9,3 +9,5 @@ extra-y	= start.o
 
 obj-y	+= cpu.o
 obj-$(CONFIG_USE_IRQ)	+= interrupts.o
+
+obj-$(CONFIG_S3C24X0) += s3c24x0/
