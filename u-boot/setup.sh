@@ -32,6 +32,7 @@ make CROSS_COMPILE=arm-linux-gnueabi- ${1}_config && {
 		;;
 	*)
 		echo "flashing with jtag not supported for this platform"
+		exit 1
 		;;
 	esac
-}
+} && make CROSS_COMPILE=arm-linux-gnueabi- clean
