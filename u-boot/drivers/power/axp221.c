@@ -1,13 +1,20 @@
 /*
+ * AXP221 and AXP223 driver
+ *
+ * IMPORTANT when making changes to this file check that the registers
+ * used are the same for the axp221 and axp223.
+ *
+ * (C) Copyright 2014 Hans de Goede <hdegoede@redhat.com>
  * (C) Copyright 2013 Oliver Schinagl <oliver@schinagl.nl>
  *
  * SPDX-License-Identifier:	GPL-2.0+
  */
 
 #include <common.h>
+#include <command.h>
 #include <errno.h>
-#include <asm/arch/p2wi.h>
-#include <axp221.h>
+#include <asm/arch/pmic_bus.h>
+#include <axp_pmic.h>
 
 static u8 axp221_mvolt_to_cfg(int mvolt, int min, int max, int div)
 {
@@ -19,168 +26,253 @@ static u8 axp221_mvolt_to_cfg(int mvolt, int min, int max, int div)
 	return (mvolt - min) / div;
 }
 
-static int axp221_setbits(u8 reg, u8 bits)
-{
-	int ret;
-	u8 val;
-
-	ret = p2wi_read(reg, &val);
-	if (ret)
-		return ret;
-
-	val |= bits;
-	return p2wi_write(reg, val);
-}
-
-int axp221_set_dcdc1(unsigned int mvolt)
+int axp_set_dcdc1(unsigned int mvolt)
 {
 	int ret;
 	u8 cfg = axp221_mvolt_to_cfg(mvolt, 1600, 3400, 100);
 
-	ret = p2wi_write(AXP221_DCDC1_CTRL, cfg);
+	if (mvolt == 0)
+		return pmic_bus_clrbits(AXP221_OUTPUT_CTRL1,
+					AXP221_OUTPUT_CTRL1_DCDC1_EN);
+
+	ret = pmic_bus_write(AXP221_DCDC1_CTRL, cfg);
 	if (ret)
 		return ret;
 
-	return axp221_setbits(AXP221_OUTPUT_CTRL2,
-			      AXP221_OUTPUT_CTRL2_DCDC1_EN);
+	ret = pmic_bus_setbits(AXP221_OUTPUT_CTRL2,
+			       AXP221_OUTPUT_CTRL2_DCDC1SW_EN);
+	if (ret)
+		return ret;
+
+	return pmic_bus_setbits(AXP221_OUTPUT_CTRL1,
+				AXP221_OUTPUT_CTRL1_DCDC1_EN);
 }
 
-int axp221_set_dcdc2(unsigned int mvolt)
+int axp_set_dcdc2(unsigned int mvolt)
 {
+	int ret;
 	u8 cfg = axp221_mvolt_to_cfg(mvolt, 600, 1540, 20);
 
-	return p2wi_write(AXP221_DCDC2_CTRL, cfg);
+	if (mvolt == 0)
+		return pmic_bus_clrbits(AXP221_OUTPUT_CTRL1,
+					AXP221_OUTPUT_CTRL1_DCDC2_EN);
+
+	ret = pmic_bus_write(AXP221_DCDC2_CTRL, cfg);
+	if (ret)
+		return ret;
+
+	return pmic_bus_setbits(AXP221_OUTPUT_CTRL1,
+				AXP221_OUTPUT_CTRL1_DCDC2_EN);
 }
 
-int axp221_set_dcdc3(unsigned int mvolt)
+int axp_set_dcdc3(unsigned int mvolt)
 {
+	int ret;
 	u8 cfg = axp221_mvolt_to_cfg(mvolt, 600, 1860, 20);
 
-	return p2wi_write(AXP221_DCDC3_CTRL, cfg);
+	if (mvolt == 0)
+		return pmic_bus_clrbits(AXP221_OUTPUT_CTRL1,
+					AXP221_OUTPUT_CTRL1_DCDC3_EN);
+
+	ret = pmic_bus_write(AXP221_DCDC3_CTRL, cfg);
+	if (ret)
+		return ret;
+
+	return pmic_bus_setbits(AXP221_OUTPUT_CTRL1,
+				AXP221_OUTPUT_CTRL1_DCDC3_EN);
 }
 
-int axp221_set_dcdc4(unsigned int mvolt)
+int axp_set_dcdc4(unsigned int mvolt)
 {
+	int ret;
 	u8 cfg = axp221_mvolt_to_cfg(mvolt, 600, 1540, 20);
 
-	return p2wi_write(AXP221_DCDC4_CTRL, cfg);
+	if (mvolt == 0)
+		return pmic_bus_clrbits(AXP221_OUTPUT_CTRL1,
+					AXP221_OUTPUT_CTRL1_DCDC4_EN);
+
+	ret = pmic_bus_write(AXP221_DCDC4_CTRL, cfg);
+	if (ret)
+		return ret;
+
+	return pmic_bus_setbits(AXP221_OUTPUT_CTRL1,
+				AXP221_OUTPUT_CTRL1_DCDC4_EN);
 }
 
-int axp221_set_dcdc5(unsigned int mvolt)
+int axp_set_dcdc5(unsigned int mvolt)
 {
+	int ret;
 	u8 cfg = axp221_mvolt_to_cfg(mvolt, 1000, 2550, 50);
 
-	return p2wi_write(AXP221_DCDC5_CTRL, cfg);
+	if (mvolt == 0)
+		return pmic_bus_clrbits(AXP221_OUTPUT_CTRL1,
+					AXP221_OUTPUT_CTRL1_DCDC5_EN);
+
+	ret = pmic_bus_write(AXP221_DCDC5_CTRL, cfg);
+	if (ret)
+		return ret;
+
+	return pmic_bus_setbits(AXP221_OUTPUT_CTRL1,
+				AXP221_OUTPUT_CTRL1_DCDC5_EN);
 }
 
-int axp221_set_dldo1(unsigned int mvolt)
+int axp_set_aldo1(unsigned int mvolt)
 {
 	int ret;
 	u8 cfg = axp221_mvolt_to_cfg(mvolt, 700, 3300, 100);
 
-	ret = p2wi_write(AXP221_DLDO1_CTRL, cfg);
+	if (mvolt == 0)
+		return pmic_bus_clrbits(AXP221_OUTPUT_CTRL1,
+					AXP221_OUTPUT_CTRL1_ALDO1_EN);
+
+	ret = pmic_bus_write(AXP221_ALDO1_CTRL, cfg);
 	if (ret)
 		return ret;
 
-	return axp221_setbits(AXP221_OUTPUT_CTRL2,
-			      AXP221_OUTPUT_CTRL2_DLDO1_EN);
+	return pmic_bus_setbits(AXP221_OUTPUT_CTRL1,
+				AXP221_OUTPUT_CTRL1_ALDO1_EN);
 }
 
-int axp221_set_dldo2(unsigned int mvolt)
+int axp_set_aldo2(unsigned int mvolt)
 {
 	int ret;
 	u8 cfg = axp221_mvolt_to_cfg(mvolt, 700, 3300, 100);
 
-	ret = p2wi_write(AXP221_DLDO2_CTRL, cfg);
+	if (mvolt == 0)
+		return pmic_bus_clrbits(AXP221_OUTPUT_CTRL1,
+					AXP221_OUTPUT_CTRL1_ALDO2_EN);
+
+	ret = pmic_bus_write(AXP221_ALDO2_CTRL, cfg);
 	if (ret)
 		return ret;
 
-	return axp221_setbits(AXP221_OUTPUT_CTRL2,
-			      AXP221_OUTPUT_CTRL2_DLDO2_EN);
+	return pmic_bus_setbits(AXP221_OUTPUT_CTRL1,
+				AXP221_OUTPUT_CTRL1_ALDO2_EN);
 }
 
-int axp221_set_dldo3(unsigned int mvolt)
+int axp_set_aldo3(unsigned int mvolt)
 {
 	int ret;
 	u8 cfg = axp221_mvolt_to_cfg(mvolt, 700, 3300, 100);
 
-	ret = p2wi_write(AXP221_DLDO3_CTRL, cfg);
+	if (mvolt == 0)
+		return pmic_bus_clrbits(AXP221_OUTPUT_CTRL3,
+					AXP221_OUTPUT_CTRL3_ALDO3_EN);
+
+	ret = pmic_bus_write(AXP221_ALDO3_CTRL, cfg);
 	if (ret)
 		return ret;
 
-	return axp221_setbits(AXP221_OUTPUT_CTRL2,
-			      AXP221_OUTPUT_CTRL2_DLDO3_EN);
+	return pmic_bus_setbits(AXP221_OUTPUT_CTRL3,
+				AXP221_OUTPUT_CTRL3_ALDO3_EN);
 }
 
-int axp221_set_dldo4(unsigned int mvolt)
+int axp_set_dldo(int dldo_num, unsigned int mvolt)
+{
+	u8 cfg = axp221_mvolt_to_cfg(mvolt, 700, 3300, 100);
+	int ret;
+
+	if (dldo_num < 1 || dldo_num > 4)
+		return -EINVAL;
+
+	if (mvolt == 0)
+		return pmic_bus_clrbits(AXP221_OUTPUT_CTRL2,
+				AXP221_OUTPUT_CTRL2_DLDO1_EN << (dldo_num - 1));
+
+	ret = pmic_bus_write(AXP221_DLDO1_CTRL + (dldo_num - 1), cfg);
+	if (ret)
+		return ret;
+
+	return pmic_bus_setbits(AXP221_OUTPUT_CTRL2,
+				AXP221_OUTPUT_CTRL2_DLDO1_EN << (dldo_num - 1));
+}
+
+int axp_set_eldo(int eldo_num, unsigned int mvolt)
 {
 	int ret;
 	u8 cfg = axp221_mvolt_to_cfg(mvolt, 700, 3300, 100);
+	u8 addr, bits;
 
-	ret = p2wi_write(AXP221_DLDO4_CTRL, cfg);
+	switch (eldo_num) {
+	case 3:
+		addr = AXP221_ELDO3_CTRL;
+		bits = AXP221_OUTPUT_CTRL2_ELDO3_EN;
+		break;
+	case 2:
+		addr = AXP221_ELDO2_CTRL;
+		bits = AXP221_OUTPUT_CTRL2_ELDO2_EN;
+		break;
+	case 1:
+		addr = AXP221_ELDO1_CTRL;
+		bits = AXP221_OUTPUT_CTRL2_ELDO1_EN;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	if (mvolt == 0)
+		return pmic_bus_clrbits(AXP221_OUTPUT_CTRL2, bits);
+
+	ret = pmic_bus_write(addr, cfg);
 	if (ret)
 		return ret;
 
-	return axp221_setbits(AXP221_OUTPUT_CTRL2,
-			      AXP221_OUTPUT_CTRL2_DLDO4_EN);
+	return pmic_bus_setbits(AXP221_OUTPUT_CTRL2, bits);
 }
 
-int axp221_set_aldo1(unsigned int mvolt)
-{
-	int ret;
-	u8 cfg = axp221_mvolt_to_cfg(mvolt, 700, 3300, 100);
-
-	ret = p2wi_write(AXP221_ALDO1_CTRL, cfg);
-	if (ret)
-		return ret;
-
-	return axp221_setbits(AXP221_OUTPUT_CTRL1,
-			      AXP221_OUTPUT_CTRL1_ALDO1_EN);
-}
-
-int axp221_set_aldo2(unsigned int mvolt)
-{
-	int ret;
-	u8 cfg = axp221_mvolt_to_cfg(mvolt, 700, 3300, 100);
-
-	ret = p2wi_write(AXP221_ALDO2_CTRL, cfg);
-	if (ret)
-		return ret;
-
-	return axp221_setbits(AXP221_OUTPUT_CTRL1,
-			      AXP221_OUTPUT_CTRL1_ALDO2_EN);
-}
-
-int axp221_set_aldo3(unsigned int mvolt)
-{
-	int ret;
-	u8 cfg = axp221_mvolt_to_cfg(mvolt, 700, 3300, 100);
-
-	ret = p2wi_write(AXP221_ALDO3_CTRL, cfg);
-	if (ret)
-		return ret;
-
-	return axp221_setbits(AXP221_OUTPUT_CTRL3,
-			      AXP221_OUTPUT_CTRL3_ALDO3_EN);
-}
-
-int axp221_init(void)
+int axp_init(void)
 {
 	u8 axp_chip_id;
 	int ret;
 
-	p2wi_init();
-	ret = p2wi_change_to_p2wi_mode(AXP221_CHIP_ADDR, AXP221_CTRL_ADDR,
-				       AXP221_INIT_DATA);
+	ret = pmic_bus_init();
 	if (ret)
 		return ret;
 
-	ret = p2wi_read(AXP221_CHIP_ID, &axp_chip_id);
+	ret = pmic_bus_read(AXP221_CHIP_ID, &axp_chip_id);
 	if (ret)
 		return ret;
 
 	if (!(axp_chip_id == 0x6 || axp_chip_id == 0x7 || axp_chip_id == 0x17))
 		return -ENODEV;
 
+	return 0;
+}
+
+int axp_get_sid(unsigned int *sid)
+{
+	u8 *dest = (u8 *)sid;
+	int i, ret;
+
+	ret = pmic_bus_init();
+	if (ret)
+		return ret;
+
+	ret = pmic_bus_write(AXP221_PAGE, 1);
+	if (ret)
+		return ret;
+
+	for (i = 0; i < 16; i++) {
+		ret = pmic_bus_read(AXP221_SID + i, &dest[i]);
+		if (ret)
+			return ret;
+	}
+
+	pmic_bus_write(AXP221_PAGE, 0);
+
+	for (i = 0; i < 4; i++)
+		sid[i] = be32_to_cpu(sid[i]);
+
+	return 0;
+}
+
+int do_poweroff(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
+{
+	pmic_bus_write(AXP221_SHUTDOWN, AXP221_SHUTDOWN_POWEROFF);
+
+	/* infinite loop during shutdown */
+	while (1) {}
+
+	/* not reached */
 	return 0;
 }

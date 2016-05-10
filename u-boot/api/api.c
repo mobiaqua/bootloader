@@ -189,7 +189,7 @@ static int API_get_timer(va_list ap)
  *
  *   - net: &eth_device struct address from list pointed to by eth_devices
  *
- *   - storage: block_dev_desc_t struct address from &ide_dev_desc[n],
+ *   - storage: struct blk_desc struct address from &ide_dev_desc[n],
  *     &scsi_dev_desc[n] and similar tables
  *
  ****************************************************************************/
@@ -661,6 +661,7 @@ void api_init(void)
 		return;
 	}
 
+	setenv_hex("api_address", (unsigned long)sig);
 	debugf("API sig @ 0x%08x\n", sig);
 	memcpy(sig->magic, API_SIG_MAGIC, 8);
 	sig->version = API_SIG_VERSION;

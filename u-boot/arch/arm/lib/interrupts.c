@@ -22,6 +22,7 @@
 #include <common.h>
 #include <asm/proc-armv/ptrace.h>
 #include <asm/u-boot-arm.h>
+#include <efi_loader.h>
 
 DECLARE_GLOBAL_DATA_PTR;
 
@@ -123,8 +124,8 @@ void bad_mode (void)
 
 void show_regs (struct pt_regs *regs)
 {
-	unsigned long flags;
-	const char *processor_modes[] = {
+	unsigned long __maybe_unused flags;
+	const char __maybe_unused *processor_modes[] = {
 	"USER_26",	"FIQ_26",	"IRQ_26",	"SVC_26",
 	"UK4_26",	"UK5_26",	"UK6_26",	"UK7_26",
 	"UK8_26",	"UK9_26",	"UK10_26",	"UK11_26",
@@ -137,10 +138,15 @@ void show_regs (struct pt_regs *regs)
 
 	flags = condition_codes (regs);
 
-	printf ("pc : [<%08lx>]	   lr : [<%08lx>]\n"
-		"sp : %08lx  ip : %08lx	 fp : %08lx\n",
-		instruction_pointer (regs),
-		regs->ARM_lr, regs->ARM_sp, regs->ARM_ip, regs->ARM_fp);
+	printf("pc : [<%08lx>]	   lr : [<%08lx>]\n",
+	       instruction_pointer(regs), regs->ARM_lr);
+	if (gd->flags & GD_FLG_RELOC) {
+		printf("reloc pc : [<%08lx>]	   lr : [<%08lx>]\n",
+		       instruction_pointer(regs) - gd->reloc_off,
+		       regs->ARM_lr - gd->reloc_off);
+	}
+	printf("sp : %08lx  ip : %08lx	 fp : %08lx\n",
+	       regs->ARM_sp, regs->ARM_ip, regs->ARM_fp);
 	printf ("r10: %08lx  r9 : %08lx	 r8 : %08lx\n",
 		regs->ARM_r10, regs->ARM_r9, regs->ARM_r8);
 	printf ("r7 : %08lx  r6 : %08lx	 r5 : %08lx  r4 : %08lx\n",
@@ -160,6 +166,7 @@ void show_regs (struct pt_regs *regs)
 
 void do_undefined_instruction (struct pt_regs *pt_regs)
 {
+	efi_restore_gd();
 	printf ("undefined instruction\n");
 	show_regs (pt_regs);
 	bad_mode ();
@@ -167,6 +174,7 @@ void do_undefined_instruction (struct pt_regs *pt_regs)
 
 void do_software_interrupt (struct pt_regs *pt_regs)
 {
+	efi_restore_gd();
 	printf ("software interrupt\n");
 	show_regs (pt_regs);
 	bad_mode ();
@@ -174,6 +182,7 @@ void do_software_interrupt (struct pt_regs *pt_regs)
 
 void do_prefetch_abort (struct pt_regs *pt_regs)
 {
+	efi_restore_gd();
 	printf ("prefetch abort\n");
 	show_regs (pt_regs);
 	bad_mode ();
@@ -181,6 +190,7 @@ void do_prefetch_abort (struct pt_regs *pt_regs)
 
 void do_data_abort (struct pt_regs *pt_regs)
 {
+	efi_restore_gd();
 	printf ("data abort\n");
 	show_regs (pt_regs);
 	bad_mode ();
@@ -188,6 +198,7 @@ void do_data_abort (struct pt_regs *pt_regs)
 
 void do_not_used (struct pt_regs *pt_regs)
 {
+	efi_restore_gd();
 	printf ("not used\n");
 	show_regs (pt_regs);
 	bad_mode ();
@@ -195,6 +206,7 @@ void do_not_used (struct pt_regs *pt_regs)
 
 void do_fiq (struct pt_regs *pt_regs)
 {
+	efi_restore_gd();
 	printf ("fast interrupt request\n");
 	show_regs (pt_regs);
 	bad_mode ();
@@ -203,6 +215,7 @@ void do_fiq (struct pt_regs *pt_regs)
 #ifndef CONFIG_USE_IRQ
 void do_irq (struct pt_regs *pt_regs)
 {
+	efi_restore_gd();
 	printf ("interrupt request\n");
 	show_regs (pt_regs);
 	bad_mode ();

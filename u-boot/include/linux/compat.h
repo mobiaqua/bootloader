@@ -4,6 +4,7 @@
 #include <malloc.h>
 #include <linux/types.h>
 #include <linux/err.h>
+#include <linux/kernel.h>
 
 struct unused {};
 typedef struct unused unused_t;
@@ -36,37 +37,66 @@ extern struct p_current *current;
 #define KERN_INFO
 #define KERN_DEBUG
 
+#define GFP_ATOMIC ((gfp_t) 0)
+#define GFP_KERNEL ((gfp_t) 0)
+#define GFP_NOFS ((gfp_t) 0)
+#define GFP_USER ((gfp_t) 0)
+#define __GFP_NOWARN ((gfp_t) 0)
+#define __GFP_ZERO	((__force gfp_t)0x8000u)	/* Return zeroed page on success */
+
 void *kmalloc(size_t size, int flags);
-void *kzalloc(size_t size, int flags);
+
+static inline void *kzalloc(size_t size, gfp_t flags)
+{
+	return kmalloc(size, flags | __GFP_ZERO);
+}
+
+static inline void *kmalloc_array(size_t n, size_t size, gfp_t flags)
+{
+	if (size != 0 && n > SIZE_MAX / size)
+		return NULL;
+	return kmalloc(n * size, flags | __GFP_ZERO);
+}
+
+static inline void *kcalloc(size_t n, size_t size, gfp_t flags)
+{
+	return kmalloc_array(n, size, flags | __GFP_ZERO);
+}
+
 #define vmalloc(size)	kmalloc(size, 0)
 #define __vmalloc(size, flags, pgsz)	kmalloc(size, flags)
-#define kfree(ptr)	free(ptr)
-#define vfree(ptr)	free(ptr)
+static inline void *vzalloc(unsigned long size)
+{
+	return kzalloc(size, 0);
+}
+static inline void kfree(const void *block)
+{
+	free((void *)block);
+}
+static inline void vfree(const void *addr)
+{
+	free((void *)addr);
+}
 
 struct kmem_cache { int sz; };
 
 struct kmem_cache *get_mem(int element_sz);
 #define kmem_cache_create(a, sz, c, d, e)	get_mem(sz)
 void *kmem_cache_alloc(struct kmem_cache *obj, int flag);
-#define kmem_cache_free(obj, size)	free(size)
-#define kmem_cache_destroy(obj)		free(obj)
+static inline void kmem_cache_free(struct kmem_cache *cachep, void *obj)
+{
+	free(obj);
+}
+static inline void kmem_cache_destroy(struct kmem_cache *cachep)
+{
+	free(cachep);
+}
 
 #define DECLARE_WAITQUEUE(...)	do { } while (0)
 #define add_wait_queue(...)	do { } while (0)
 #define remove_wait_queue(...)	do { } while (0)
 
 #define KERNEL_VERSION(a,b,c)	(((a) << 16) + ((b) << 8) + (c))
-
-/*
- * ..and if you can't take the strict
- * types, you can specify one yourself.
- *
- * Or not use min/max at all, of course.
- */
-#define min_t(type,x,y) \
-	({ type __x = (x); type __y = (y); __x < __y ? __x: __y; })
-#define max_t(type,x,y) \
-	({ type __x = (x); type __y = (y); __x > __y ? __x: __y; })
 
 #ifndef BUG
 #define BUG() do { \
@@ -81,33 +111,8 @@ void *kmem_cache_alloc(struct kmem_cache *obj, int flag);
 
 #define PAGE_SIZE	4096
 
-/**
- * upper_32_bits - return MSB bits 32-63 of a number if little endian, or
- * return MSB bits 0-31 of a number if big endian.
- * @n: the number we're accessing
- *
- * A basic shift-right of a 64- or 32-bit quantity.  Use this to suppress
- * the "right shift count >= width of type" warning when that quantity is
- * 32-bits.
- */
-#define upper_32_bits(n) ((u32)(((n) >> 16) >> 16))
-
-/**
- * lower_32_bits - return LSB bits 0-31 of a number if little endian, or
- * return LSB bits 32-63 of a number if big endian.
- * @n: the number we're accessing
- */
-#define lower_32_bits(n) ((u32)(n))
-
 /* drivers/char/random.c */
 #define get_random_bytes(...)
-
-/* idr.c */
-#define GFP_ATOMIC ((gfp_t) 0)
-#define GFP_KERNEL ((gfp_t) 0)
-#define GFP_NOFS ((gfp_t) 0)
-#define GFP_USER ((gfp_t) 0)
-#define __GFP_NOWARN ((gfp_t) 0)
 
 /* include/linux/leds.h */
 struct led_trigger {};
@@ -124,12 +129,6 @@ static inline void led_trigger_register_simple(const char *name,
 static inline void led_trigger_unregister_simple(struct led_trigger *trigger) {}
 static inline void led_trigger_event(struct led_trigger *trigger,
 					enum led_brightness event) {}
-
-/* include/linux/log2.h */
-static inline int is_power_of_2(unsigned long n)
-{
-	return (n != 0 && ((n & (n - 1)) == 0));
-}
 
 /* uapi/linux/limits.h */
 #define XATTR_LIST_MAX 65536	/* size of extended attribute namelist (64k) */
@@ -151,17 +150,6 @@ typedef unsigned long blkcnt_t;
 #endif
 
 #define ENOTSUPP	524	/* Operation is not supported */
-
-/* from include/linux/kernel.h */
-/*
- * This looks more complex than it should be. But we need to
- * get the type for the ~ right in round_down (it needs to be
- * as wide as the result!), and we want to evaluate the macro
- * arguments just once each.
- */
-#define __round_mask(x, y) ((__typeof__(x))((y)-1))
-#define round_up(x, y) ((((x)-1) | __round_mask(x, y))+1)
-#define round_down(x, y) ((x) & ~__round_mask(x, y))
 
 /* module */
 #define THIS_MODULE		0
@@ -191,6 +179,8 @@ typedef unsigned long blkcnt_t;
 
 #define class_create(...)		__builtin_return_address(0)
 #define class_create_file(...)		0
+#define class_register(...)		0
+#define class_unregister(...)
 #define class_remove_file(...)
 #define class_destroy(...)
 #define misc_register(...)		0
@@ -198,23 +188,12 @@ typedef unsigned long blkcnt_t;
 
 #define blocking_notifier_call_chain(...) 0
 
-/*
- * Multiplies an integer by a fraction, while avoiding unnecessary
- * overflow or loss of precision.
- */
-#define mult_frac(x, numer, denom)(			\
-{							\
-	typeof(x) quot = (x) / (denom);			\
-	typeof(x) rem  = (x) % (denom);			\
-	(quot * (numer)) + ((rem * (numer)) / (denom));	\
-}							\
-)
-
 #define __initdata
 #define late_initcall(...)
 
 #define dev_set_name(...)		do { } while (0)
 #define device_register(...)		0
+#define device_unregister(...)
 #define volume_sysfs_init(...)		0
 #define volume_sysfs_close(...)		do { } while (0)
 
@@ -241,8 +220,6 @@ struct work_struct {};
 unsigned long copy_from_user(void *dest, const void *src,
 			     unsigned long count);
 
-void *vzalloc(unsigned long size);
-
 typedef unused_t spinlock_t;
 typedef int	wait_queue_head_t;
 
@@ -267,15 +244,11 @@ typedef int	wait_queue_head_t;
 #define cond_resched()			do { } while (0)
 #define yield()				do { } while (0)
 
-#define INT_MAX				((int)(~0U>>1))
-
-#define __user
 #define __init
 #define __exit
 #define __devinit
 #define __devinitdata
 #define __devinitconst
-#define __iomem
 
 #define kthread_create(...)	__builtin_return_address(0)
 #define kthread_stop(...)	do { } while (0)
@@ -306,8 +279,6 @@ struct cdev {
 #define cdev_add(...)		0
 #define cdev_del(...)		do { } while (0)
 
-#define MAX_ERRNO		4095
-
 #define prandom_u32(...)	0
 
 typedef struct {
@@ -320,7 +291,6 @@ typedef struct {
 
 /* from include/linux/types.h */
 
-typedef int	atomic_t;
 /**
  * struct callback_head - callback structure for use with RCU and task_work
  * @next: next update requests in a list
@@ -374,8 +344,6 @@ struct notifier_block {};
 
 typedef unsigned long dmaaddr_t;
 
-#define cpu_relax() do {} while (0)
-
 #define pm_runtime_get_sync(dev) do {} while (0)
 #define pm_runtime_put(dev) do {} while (0)
 #define pm_runtime_put_sync(dev) do {} while (0)
@@ -385,6 +353,7 @@ typedef unsigned long dmaaddr_t;
 
 #define IRQ_NONE 0
 #define IRQ_HANDLED 1
+#define IRQ_WAKE_THREAD 2
 
 #define dev_set_drvdata(dev, data) do {} while (0)
 

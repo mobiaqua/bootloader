@@ -16,33 +16,22 @@
 #include <fat.h>
 #include <mmc.h>
 
-static unsigned char __aligned(CONFIG_SYS_CACHELINE_SIZE)
-				dfu_file_buf[CONFIG_SYS_DFU_MAX_FILE_SIZE];
+static unsigned char *dfu_file_buf;
 static long dfu_file_buf_len;
-
-static int mmc_access_part(struct dfu_entity *dfu, struct mmc *mmc, int part)
-{
-	int ret;
-
-	if (part == mmc->part_num)
-		return 0;
-
-	ret = mmc_switch_part(dfu->data.mmc.dev_num, part);
-	if (ret) {
-		error("Cannot switch to partition %d\n", part);
-		return ret;
-	}
-	mmc->part_num = part;
-
-	return 0;
-}
+static long dfu_file_buf_filled;
 
 static int mmc_block_op(enum dfu_op op, struct dfu_entity *dfu,
 			u64 offset, void *buf, long *len)
 {
-	struct mmc *mmc = find_mmc_device(dfu->data.mmc.dev_num);
+	struct mmc *mmc;
 	u32 blk_start, blk_count, n = 0;
 	int ret, part_num_bkp = 0;
+
+	mmc = find_mmc_device(dfu->data.mmc.dev_num);
+	if (!mmc) {
+		error("Device MMC %d - not found!", dfu->data.mmc.dev_num);
+		return -ENODEV;
+	}
 
 	/*
 	 * We must ensure that we work in lba_blk_size chunks, so ALIGN
@@ -60,8 +49,9 @@ static int mmc_block_op(enum dfu_op op, struct dfu_entity *dfu,
 	}
 
 	if (dfu->data.mmc.hw_partition >= 0) {
-		part_num_bkp = mmc->part_num;
-		ret = mmc_access_part(dfu, mmc, dfu->data.mmc.hw_partition);
+		part_num_bkp = mmc->block_dev.hwpart;
+		ret = mmc_select_hwpart(dfu->data.mmc.dev_num,
+					dfu->data.mmc.hw_partition);
 		if (ret)
 			return ret;
 	}
@@ -71,11 +61,11 @@ static int mmc_block_op(enum dfu_op op, struct dfu_entity *dfu,
 	      dfu->data.mmc.dev_num, blk_start, blk_count, buf);
 	switch (op) {
 	case DFU_OP_READ:
-		n = mmc->block_dev.block_read(dfu->data.mmc.dev_num, blk_start,
+		n = mmc->block_dev.block_read(&mmc->block_dev, blk_start,
 					      blk_count, buf);
 		break;
 	case DFU_OP_WRITE:
-		n = mmc->block_dev.block_write(dfu->data.mmc.dev_num, blk_start,
+		n = mmc->block_dev.block_write(&mmc->block_dev, blk_start,
 					       blk_count, buf);
 		break;
 	default:
@@ -85,12 +75,12 @@ static int mmc_block_op(enum dfu_op op, struct dfu_entity *dfu,
 	if (n != blk_count) {
 		error("MMC operation failed");
 		if (dfu->data.mmc.hw_partition >= 0)
-			mmc_access_part(dfu, mmc, part_num_bkp);
+			mmc_select_hwpart(dfu->data.mmc.dev_num, part_num_bkp);
 		return -EIO;
 	}
 
 	if (dfu->data.mmc.hw_partition >= 0) {
-		ret = mmc_access_part(dfu, mmc, part_num_bkp);
+		ret = mmc_select_hwpart(dfu->data.mmc.dev_num, part_num_bkp);
 		if (ret)
 			return ret;
 	}
@@ -151,7 +141,7 @@ static int mmc_file_op(enum dfu_op op, struct dfu_entity *dfu,
 		dfu->data.mmc.dev, dfu->data.mmc.part);
 
 	if (op != DFU_OP_SIZE)
-		sprintf(cmd_buf + strlen(cmd_buf), " 0x%x", (unsigned int)buf);
+		sprintf(cmd_buf + strlen(cmd_buf), " %p", buf);
 
 	sprintf(cmd_buf + strlen(cmd_buf), " %s", dfu->name);
 
@@ -205,7 +195,7 @@ int dfu_flush_medium_mmc(struct dfu_entity *dfu)
 
 	if (dfu->layout != DFU_RAW_ADDR) {
 		/* Do stuff here. */
-		ret = mmc_file_op(DFU_OP_WRITE, dfu, &dfu_file_buf,
+		ret = mmc_file_op(DFU_OP_WRITE, dfu, dfu_file_buf,
 				&dfu_file_buf_len);
 
 		/* Now that we're done */
@@ -225,15 +215,39 @@ long dfu_get_medium_size_mmc(struct dfu_entity *dfu)
 		return dfu->data.mmc.lba_size * dfu->data.mmc.lba_blk_size;
 	case DFU_FS_FAT:
 	case DFU_FS_EXT4:
+		dfu_file_buf_filled = -1;
 		ret = mmc_file_op(DFU_OP_SIZE, dfu, NULL, &len);
 		if (ret < 0)
 			return ret;
+		if (len > CONFIG_SYS_DFU_MAX_FILE_SIZE)
+			return -1;
 		return len;
 	default:
 		printf("%s: Layout (%s) not (yet) supported!\n", __func__,
 		       dfu_get_layout(dfu->layout));
 		return -1;
 	}
+}
+
+static int mmc_file_unbuffer(struct dfu_entity *dfu, u64 offset, void *buf,
+			     long *len)
+{
+	int ret;
+	long file_len;
+
+	if (dfu_file_buf_filled == -1) {
+		ret = mmc_file_op(DFU_OP_READ, dfu, dfu_file_buf, &file_len);
+		if (ret < 0)
+			return ret;
+		dfu_file_buf_filled = file_len;
+	}
+	if (offset + *len > dfu_file_buf_filled)
+		return -EINVAL;
+
+	/* Add to the current buffer. */
+	memcpy(buf, dfu_file_buf + offset, *len);
+
+	return 0;
 }
 
 int dfu_read_medium_mmc(struct dfu_entity *dfu, u64 offset, void *buf,
@@ -247,7 +261,7 @@ int dfu_read_medium_mmc(struct dfu_entity *dfu, u64 offset, void *buf,
 		break;
 	case DFU_FS_FAT:
 	case DFU_FS_EXT4:
-		ret = mmc_file_op(DFU_OP_READ, dfu, buf, len);
+		ret = mmc_file_unbuffer(dfu, offset, buf, len);
 		break;
 	default:
 		printf("%s: Layout (%s) not (yet) supported!\n", __func__,
@@ -255,6 +269,14 @@ int dfu_read_medium_mmc(struct dfu_entity *dfu, u64 offset, void *buf,
 	}
 
 	return ret;
+}
+
+void dfu_free_entity_mmc(struct dfu_entity *dfu)
+{
+	if (dfu_file_buf) {
+		free(dfu_file_buf);
+		dfu_file_buf = NULL;
+	}
 }
 
 /*
@@ -329,11 +351,11 @@ int dfu_fill_entity_mmc(struct dfu_entity *dfu, char *devstr, char *s)
 
 	} else if (!strcmp(entity_type, "part")) {
 		disk_partition_t partinfo;
-		block_dev_desc_t *blk_dev = &mmc->block_dev;
+		struct blk_desc *blk_dev = &mmc->block_dev;
 		int mmcdev = second_arg;
 		int mmcpart = third_arg;
 
-		if (get_partition_info(blk_dev, mmcpart, &partinfo) != 0) {
+		if (part_get_info(blk_dev, mmcpart, &partinfo) != 0) {
 			error("Couldn't find part #%d on mmc device #%d\n",
 			      mmcpart, mmcdev);
 			return -ENODEV;
@@ -364,6 +386,18 @@ int dfu_fill_entity_mmc(struct dfu_entity *dfu, char *devstr, char *s)
 	dfu->write_medium = dfu_write_medium_mmc;
 	dfu->flush_medium = dfu_flush_medium_mmc;
 	dfu->inited = 0;
+	dfu->free_entity = dfu_free_entity_mmc;
+
+	/* Check if file buffer is ready */
+	if (!dfu_file_buf) {
+		dfu_file_buf = memalign(CONFIG_SYS_CACHELINE_SIZE,
+					CONFIG_SYS_DFU_MAX_FILE_SIZE);
+		if (!dfu_file_buf) {
+			error("Could not memalign 0x%x bytes",
+			      CONFIG_SYS_DFU_MAX_FILE_SIZE);
+			return -ENOMEM;
+		}
+	}
 
 	return 0;
 }

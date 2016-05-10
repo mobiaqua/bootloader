@@ -29,7 +29,7 @@ extern struct serial_device *default_serial_console(void);
 #if	defined(CONFIG_405GP) || \
 	defined(CONFIG_405EP) || defined(CONFIG_405EZ) || \
 	defined(CONFIG_405EX) || defined(CONFIG_440) || \
-	defined(CONFIG_MB86R0x) || defined(CONFIG_MPC5xxx) || \
+	defined(CONFIG_MPC5xxx) || \
 	defined(CONFIG_MPC83xx) || defined(CONFIG_MPC85xx) || \
 	defined(CONFIG_MPC86xx) || defined(CONFIG_SYS_SC520) || \
 	defined(CONFIG_TEGRA) || defined(CONFIG_SYS_COREBOOT) || \
@@ -164,8 +164,6 @@ struct serial_dev_priv {
 /* Access the serial operations for a device */
 #define serial_get_ops(dev)	((struct dm_serial_ops *)(dev)->driver->ops)
 
-void altera_jtag_serial_initialize(void);
-void altera_serial_initialize(void);
 void amirix_serial_initialize(void);
 void arc_serial_initialize(void);
 void arm_dcc_initialize(void);
@@ -182,7 +180,6 @@ void evb64260_serial_initialize(void);
 void imx_serial_initialize(void);
 void iop480_serial_initialize(void);
 void jz_serial_initialize(void);
-void ks8695_serial_initialize(void);
 void leon2_serial_initialize(void);
 void leon3_serial_initialize(void);
 void lh7a40x_serial_initialize(void);

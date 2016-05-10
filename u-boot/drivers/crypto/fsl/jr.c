@@ -11,6 +11,10 @@
 #include "fsl_sec.h"
 #include "jr.h"
 #include "jobdesc.h"
+#include "desc_constr.h"
+#ifdef CONFIG_FSL_CORENET
+#include <asm/fsl_pamu.h>
+#endif
 
 #define CIRC_CNT(head, tail, size)	(((head) - (tail)) & (size - 1))
 #define CIRC_SPACE(head, tail, size)	CIRC_CNT((tail), (head) + 1, (size))
@@ -90,16 +94,20 @@ static int jr_init(void)
 	jr.liodn = DEFAULT_JR_LIODN;
 #endif
 	jr.size = JR_SIZE;
-	jr.input_ring = (dma_addr_t *)malloc(JR_SIZE * sizeof(dma_addr_t));
+	jr.input_ring = (dma_addr_t *)memalign(ARCH_DMA_MINALIGN,
+				JR_SIZE * sizeof(dma_addr_t));
 	if (!jr.input_ring)
 		return -1;
+
+	jr.op_size = roundup(JR_SIZE * sizeof(struct op_ring),
+			     ARCH_DMA_MINALIGN);
 	jr.output_ring =
-	    (struct op_ring *)malloc(JR_SIZE * sizeof(struct op_ring));
+	    (struct op_ring *)memalign(ARCH_DMA_MINALIGN, jr.op_size);
 	if (!jr.output_ring)
 		return -1;
 
 	memset(jr.input_ring, 0, JR_SIZE * sizeof(dma_addr_t));
-	memset(jr.output_ring, 0, JR_SIZE * sizeof(struct op_ring));
+	memset(jr.output_ring, 0, jr.op_size);
 
 	start_jr0();
 
@@ -152,25 +160,79 @@ static int jr_hw_reset(void)
 
 /* -1 --- error, can't enqueue -- no space available */
 static int jr_enqueue(uint32_t *desc_addr,
-	       void (*callback)(uint32_t desc, uint32_t status, void *arg),
+	       void (*callback)(uint32_t status, void *arg),
 	       void *arg)
 {
 	struct jr_regs *regs = (struct jr_regs *)CONFIG_SYS_FSL_JR0_ADDR;
 	int head = jr.head;
-	dma_addr_t desc_phys_addr = virt_to_phys(desc_addr);
+	uint32_t desc_word;
+	int length = desc_len(desc_addr);
+	int i;
+#ifdef CONFIG_PHYS_64BIT
+	uint32_t *addr_hi, *addr_lo;
+#endif
+
+	/* The descriptor must be submitted to SEC block as per endianness
+	 * of the SEC Block.
+	 * So, if the endianness of Core and SEC block is different, each word
+	 * of the descriptor will be byte-swapped.
+	 */
+	for (i = 0; i < length; i++) {
+		desc_word = desc_addr[i];
+		sec_out32((uint32_t *)&desc_addr[i], desc_word);
+	}
+
+	phys_addr_t desc_phys_addr = virt_to_phys(desc_addr);
 
 	if (sec_in32(&regs->irsa) == 0 ||
 	    CIRC_SPACE(jr.head, jr.tail, jr.size) <= 0)
 		return -1;
 
-	jr.input_ring[head] = desc_phys_addr;
 	jr.info[head].desc_phys_addr = desc_phys_addr;
-	jr.info[head].desc_addr = (uint32_t)desc_addr;
 	jr.info[head].callback = (void *)callback;
 	jr.info[head].arg = arg;
 	jr.info[head].op_done = 0;
 
+	unsigned long start = (unsigned long)&jr.info[head] &
+					~(ARCH_DMA_MINALIGN - 1);
+	unsigned long end = ALIGN((unsigned long)&jr.info[head] +
+				  sizeof(struct jr_info), ARCH_DMA_MINALIGN);
+	flush_dcache_range(start, end);
+
+#ifdef CONFIG_PHYS_64BIT
+	/* Write the 64 bit Descriptor address on Input Ring.
+	 * The 32 bit hign and low part of the address will
+	 * depend on endianness of SEC block.
+	 */
+#ifdef CONFIG_SYS_FSL_SEC_LE
+	addr_lo = (uint32_t *)(&jr.input_ring[head]);
+	addr_hi = (uint32_t *)(&jr.input_ring[head]) + 1;
+#elif defined(CONFIG_SYS_FSL_SEC_BE)
+	addr_hi = (uint32_t *)(&jr.input_ring[head]);
+	addr_lo = (uint32_t *)(&jr.input_ring[head]) + 1;
+#endif /* ifdef CONFIG_SYS_FSL_SEC_LE */
+
+	sec_out32(addr_hi, (uint32_t)(desc_phys_addr >> 32));
+	sec_out32(addr_lo, (uint32_t)(desc_phys_addr));
+
+#else
+	/* Write the 32 bit Descriptor address on Input Ring. */
+	sec_out32(&jr.input_ring[head], desc_phys_addr);
+#endif /* ifdef CONFIG_PHYS_64BIT */
+
+	start = (unsigned long)&jr.input_ring[head] & ~(ARCH_DMA_MINALIGN - 1);
+	end = ALIGN((unsigned long)&jr.input_ring[head] +
+		     sizeof(dma_addr_t), ARCH_DMA_MINALIGN);
+	flush_dcache_range(start, end);
+
 	jr.head = (head + 1) & (jr.size - 1);
+
+	/* Invalidate output ring */
+	start = (unsigned long)jr.output_ring &
+					~(ARCH_DMA_MINALIGN - 1);
+	end = ALIGN((unsigned long)jr.output_ring + jr.op_size,
+		     ARCH_DMA_MINALIGN);
+	invalidate_dcache_range(start, end);
 
 	sec_out32(&regs->irja, 1);
 
@@ -183,20 +245,46 @@ static int jr_dequeue(void)
 	int head = jr.head;
 	int tail = jr.tail;
 	int idx, i, found;
-	void (*callback)(uint32_t desc, uint32_t status, void *arg);
+	void (*callback)(uint32_t status, void *arg);
 	void *arg = NULL;
+#ifdef CONFIG_PHYS_64BIT
+	uint32_t *addr_hi, *addr_lo;
+#else
+	uint32_t *addr;
+#endif
 
 	while (sec_in32(&regs->orsf) && CIRC_CNT(jr.head, jr.tail, jr.size)) {
+
 		found = 0;
 
-		dma_addr_t op_desc = jr.output_ring[jr.tail].desc;
-		uint32_t status = jr.output_ring[jr.tail].status;
-		uint32_t desc_virt;
+		phys_addr_t op_desc;
+	#ifdef CONFIG_PHYS_64BIT
+		/* Read the 64 bit Descriptor address from Output Ring.
+		 * The 32 bit hign and low part of the address will
+		 * depend on endianness of SEC block.
+		 */
+	#ifdef CONFIG_SYS_FSL_SEC_LE
+		addr_lo = (uint32_t *)(&jr.output_ring[jr.tail].desc);
+		addr_hi = (uint32_t *)(&jr.output_ring[jr.tail].desc) + 1;
+	#elif defined(CONFIG_SYS_FSL_SEC_BE)
+		addr_hi = (uint32_t *)(&jr.output_ring[jr.tail].desc);
+		addr_lo = (uint32_t *)(&jr.output_ring[jr.tail].desc) + 1;
+	#endif /* ifdef CONFIG_SYS_FSL_SEC_LE */
+
+		op_desc = ((u64)sec_in32(addr_hi) << 32) |
+			  ((u64)sec_in32(addr_lo));
+
+	#else
+		/* Read the 32 bit Descriptor address from Output Ring. */
+		addr = (uint32_t *)&jr.output_ring[jr.tail].desc;
+		op_desc = sec_in32(addr);
+	#endif /* ifdef CONFIG_PHYS_64BIT */
+
+		uint32_t status = sec_in32(&jr.output_ring[jr.tail].status);
 
 		for (i = 0; CIRC_CNT(head, tail + i, jr.size) >= 1; i++) {
 			idx = (tail + i) & (jr.size - 1);
 			if (op_desc == jr.info[idx].desc_phys_addr) {
-				desc_virt = jr.info[idx].desc_addr;
 				found = 1;
 				break;
 			}
@@ -225,13 +313,13 @@ static int jr_dequeue(void)
 		sec_out32(&regs->orjr, 1);
 		jr.info[idx].op_done = 0;
 
-		callback(desc_virt, status, arg);
+		callback(status, arg);
 	}
 
 	return 0;
 }
 
-static void desc_done(uint32_t desc, uint32_t status, void *arg)
+static void desc_done(uint32_t status, void *arg)
 {
 	struct result *x = arg;
 	x->status = status;
@@ -246,7 +334,7 @@ int run_descriptor_jr(uint32_t *desc)
 	struct result op;
 	int ret = 0;
 
-	memset(&op, sizeof(op), 0);
+	memset(&op, 0, sizeof(op));
 
 	ret = jr_enqueue(desc, desc_done, &op);
 	if (ret) {
@@ -272,7 +360,7 @@ int run_descriptor_jr(uint32_t *desc)
 		}
 	}
 
-	if (!op.status) {
+	if (op.status) {
 		debug("Error %x\n", op.status);
 		ret = op.status;
 	}
@@ -333,13 +421,17 @@ static int instantiate_rng(void)
 
 	memset(&op, 0, sizeof(struct result));
 
-	desc = malloc(sizeof(int) * 6);
+	desc = memalign(ARCH_DMA_MINALIGN, sizeof(uint32_t) * 6);
 	if (!desc) {
 		printf("cannot allocate RNG init descriptor memory\n");
 		return -1;
 	}
 
 	inline_cnstr_jobdesc_rng_instantiation(desc);
+	int size = roundup(sizeof(uint32_t) * 6, ARCH_DMA_MINALIGN);
+	flush_dcache_range((unsigned long)desc,
+			   (unsigned long)desc + size);
+
 	ret = run_descriptor_jr(desc);
 
 	if (ret)
@@ -383,8 +475,13 @@ static void kick_trng(int ent_delay)
 	sec_out32(&rng->rtsdctl, val);
 	/* min. freq. count, equal to 1/4 of the entropy sample length */
 	sec_out32(&rng->rtfreqmin, ent_delay >> 2);
-	/* max. freq. count, equal to 8 times the entropy sample length */
-	sec_out32(&rng->rtfreqmax, ent_delay << 3);
+	/* disable maximum frequency count */
+	sec_out32(&rng->rtfreqmax, RTFRQMAX_DISABLE);
+	/*
+	 * select raw sampling in both entropy shifter
+	 * and statistical checker
+	 */
+	sec_setbits32(&rng->rtmctl, RTMCTL_SAMP_MODE_RAW_ES_SC);
 	/* put RNG4 into run mode */
 	sec_clrbits32(&rng->rtmctl, RTMCTL_PRGM);
 }
@@ -436,19 +533,54 @@ static int rng_init(void)
 
 int sec_init(void)
 {
-	int ret = 0;
-
-#ifdef CONFIG_PHYS_64BIT
 	ccsr_sec_t *sec = (void *)CONFIG_SYS_FSL_SEC_ADDR;
 	uint32_t mcr = sec_in32(&sec->mcfgr);
+	int ret = 0;
 
-	sec_out32(&sec->mcfgr, mcr | 1 << MCFGR_PS_SHIFT);
+#ifdef CONFIG_FSL_CORENET
+	uint32_t liodnr;
+	uint32_t liodn_ns;
+	uint32_t liodn_s;
 #endif
+
+	/*
+	 * Modifying CAAM Read/Write Attributes
+	 * For LS2080A
+	 * For AXI Write - Cacheable, Write Back, Write allocate
+	 * For AXI Read - Cacheable, Read allocate
+	 * Only For LS2080a, to solve CAAM coherency issues
+	 */
+#ifdef CONFIG_LS2080A
+	mcr = (mcr & ~MCFGR_AWCACHE_MASK) | (0xb << MCFGR_AWCACHE_SHIFT);
+	mcr = (mcr & ~MCFGR_ARCACHE_MASK) | (0x6 << MCFGR_ARCACHE_SHIFT);
+#else
+	mcr = (mcr & ~MCFGR_AWCACHE_MASK) | (0x2 << MCFGR_AWCACHE_SHIFT);
+#endif
+
+#ifdef CONFIG_PHYS_64BIT
+	mcr |= (1 << MCFGR_PS_SHIFT);
+#endif
+	sec_out32(&sec->mcfgr, mcr);
+
+#ifdef CONFIG_FSL_CORENET
+	liodnr = sec_in32(&sec->jrliodnr[0].ls);
+	liodn_ns = (liodnr & JRNSLIODN_MASK) >> JRNSLIODN_SHIFT;
+	liodn_s = (liodnr & JRSLIODN_MASK) >> JRSLIODN_SHIFT;
+#endif
+
 	ret = jr_init();
 	if (ret < 0) {
 		printf("SEC initialization failed\n");
 		return -1;
 	}
+
+#ifdef CONFIG_FSL_CORENET
+	ret = sec_config_pamu_table(liodn_ns, liodn_s);
+	if (ret < 0)
+		return -1;
+
+	pamu_enable();
+#endif
 
 	if (get_rng_vid() >= 4) {
 		if (rng_init() < 0) {

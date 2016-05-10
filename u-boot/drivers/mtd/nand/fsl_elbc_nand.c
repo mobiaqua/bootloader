@@ -561,41 +561,6 @@ static void fsl_elbc_read_buf(struct mtd_info *mtd, u8 *buf, int len)
 		       len, avail);
 }
 
-#if defined(CONFIG_MTD_NAND_VERIFY_WRITE)
-/*
- * Verify buffer against the FCM Controller Data Buffer
- */
-static int fsl_elbc_verify_buf(struct mtd_info *mtd,
-			       const u_char *buf, int len)
-{
-	struct nand_chip *chip = mtd->priv;
-	struct fsl_elbc_mtd *priv = chip->priv;
-	struct fsl_elbc_ctrl *ctrl = priv->ctrl;
-	int i;
-
-	if (len < 0) {
-		printf("write_buf of %d bytes", len);
-		return -EINVAL;
-	}
-
-	if ((unsigned int)len > ctrl->read_bytes - ctrl->index) {
-		printf("verify_buf beyond end of buffer "
-		       "(%d requested, %u available)\n",
-		       len, ctrl->read_bytes - ctrl->index);
-
-		ctrl->index = ctrl->read_bytes;
-		return -EINVAL;
-	}
-
-	for (i = 0; i < len; i++)
-		if (in_8(&ctrl->addr[ctrl->index + i]) != buf[i])
-			break;
-
-	ctrl->index += len;
-	return i == len && ctrl->status == LTESR_CC ? 0 : -EIO;
-}
-#endif
-
 /* This function is called after Program and Erase Operations to
  * check for success or failure.
  */
@@ -656,6 +621,19 @@ static int fsl_elbc_write_page(struct mtd_info *mtd, struct nand_chip *chip,
 
 static struct fsl_elbc_ctrl *elbc_ctrl;
 
+/* ECC will be calculated automatically, and errors will be detected in
+ * waitfunc.
+ */
+static int fsl_elbc_write_subpage(struct mtd_info *mtd, struct nand_chip *chip,
+				uint32_t offset, uint32_t data_len,
+				const uint8_t *buf, int oob_required)
+{
+	fsl_elbc_write_buf(mtd, buf, mtd->writesize);
+	fsl_elbc_write_buf(mtd, chip->oob_poi, mtd->oobsize);
+
+	return 0;
+}
+
 static void fsl_elbc_ctrl_init(void)
 {
 	elbc_ctrl = kzalloc(sizeof(*elbc_ctrl), GFP_KERNEL);
@@ -714,6 +692,7 @@ static int fsl_elbc_chip_init(int devnum, u8 *addr)
 	if (priv->bank >= MAX_BANKS) {
 		printf("fsl_elbc_nand: address did not match any "
 		       "chip selects\n");
+		kfree(priv);
 		return -ENODEV;
 	}
 
@@ -727,9 +706,6 @@ static int fsl_elbc_chip_init(int devnum, u8 *addr)
 	nand->read_byte = fsl_elbc_read_byte;
 	nand->write_buf = fsl_elbc_write_buf;
 	nand->read_buf = fsl_elbc_read_buf;
-#if defined(CONFIG_MTD_NAND_VERIFY_WRITE)
-	nand->verify_buf = fsl_elbc_verify_buf;
-#endif
 	nand->select_chip = fsl_elbc_select_chip;
 	nand->cmdfunc = fsl_elbc_cmdfunc;
 	nand->waitfunc = fsl_elbc_wait;
@@ -747,6 +723,7 @@ static int fsl_elbc_chip_init(int devnum, u8 *addr)
 
 	nand->ecc.read_page = fsl_elbc_read_page;
 	nand->ecc.write_page = fsl_elbc_write_page;
+	nand->ecc.write_subpage = fsl_elbc_write_subpage;
 
 	priv->fmr = (15 << FMR_CWTO_SHIFT) | (2 << FMR_AL_SHIFT);
 

@@ -13,12 +13,13 @@
 #include <spl.h>
 #include <asm/u-boot.h>
 #include <fat.h>
+#include <errno.h>
 #include <image.h>
 
 static int fat_registered;
 
 #ifdef CONFIG_SPL_FAT_SUPPORT
-static int spl_register_fat_device(block_dev_desc_t *block_dev, int partition)
+static int spl_register_fat_device(struct blk_desc *block_dev, int partition)
 {
 	int err = 0;
 
@@ -38,7 +39,7 @@ static int spl_register_fat_device(block_dev_desc_t *block_dev, int partition)
 	return err;
 }
 
-int spl_load_image_fat(block_dev_desc_t *block_dev,
+int spl_load_image_fat(struct blk_desc *block_dev,
 						int partition,
 						const char *filename)
 {
@@ -71,7 +72,7 @@ end:
 }
 
 #ifdef CONFIG_SPL_OS_BOOT
-int spl_load_image_fat_os(block_dev_desc_t *block_dev, int partition)
+int spl_load_image_fat_os(struct blk_desc *block_dev, int partition)
 {
 	int err;
 	__maybe_unused char *file;
@@ -118,6 +119,11 @@ defaults:
 
 	return spl_load_image_fat(block_dev, partition,
 			CONFIG_SPL_FS_LOAD_KERNEL_NAME);
+}
+#else
+int spl_load_image_fat_os(struct blk_desc *block_dev, int partition)
+{
+	return -ENOSYS;
 }
 #endif
 #endif

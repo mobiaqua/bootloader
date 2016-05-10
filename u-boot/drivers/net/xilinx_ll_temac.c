@@ -231,7 +231,7 @@ static int ll_temac_init(struct eth_device *dev, bd_t *bis)
 	struct ll_temac *ll_temac = dev->priv;
 	int ret;
 
-	printf("%s: Xilinx XPS LocalLink Tri-Mode Ether MAC #%d at 0x%08X.\n",
+	printf("%s: Xilinx XPS LocalLink Tri-Mode Ether MAC #%d at 0x%08lx.\n",
 		dev->name, dev->index, dev->iobase);
 
 	if (!ll_temac_setup_ctrl(dev))
@@ -303,7 +303,8 @@ int xilinx_ll_temac_initialize(bd_t *bis, struct ll_temac_info *devinf)
 	if (devinf->devname) {
 		strncpy(dev->name, devinf->devname, sizeof(dev->name));
 	} else {
-		snprintf(dev->name, sizeof(dev->name), "lltemac.%lx", devinf->base_addr);
+		snprintf(dev->name, sizeof(dev->name), "ll_tem.%lx",
+			 devinf->base_addr);
 		devinf->devname = dev->name;
 	}
 

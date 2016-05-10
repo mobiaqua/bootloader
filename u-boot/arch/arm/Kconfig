@@ -27,6 +27,11 @@ config SYS_CPU
         default "pxa" if CPU_PXA
         default "sa1100" if CPU_SA1100
 
+config SYS_L2CACHE_OFF
+	bool "L2cache off"
+	help
+	  If SoC does not support L2CACHE or one do not want to enable
+	  L2CACHE, choose this option.
 choice
 	prompt "Target select"
 

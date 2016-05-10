@@ -3,6 +3,7 @@
 # SPDX-License-Identifier:	GPL-2.0+
 #
 
+import math
 import os
 import re
 import shutil
@@ -139,6 +140,9 @@ class PatchStream:
         # Initially we have no output. Prepare the input line string
         out = []
         line = line.rstrip('\n')
+
+        commit_match = re_commit.match(line) if self.is_log else None
+
         if self.is_log:
             if line[:4] == '    ':
                 line = line[4:]
@@ -146,7 +150,6 @@ class PatchStream:
         # Handle state transition and skipping blank lines
         series_tag_match = re_series_tag.match(line)
         commit_tag_match = re_commit_tag.match(line)
-        commit_match = re_commit.match(line) if self.is_log else None
         cover_cc_match = re_cover_cc.match(line)
         signoff_match = re_signoff.match(line)
         tag_match = None
@@ -248,8 +251,7 @@ class PatchStream:
         # Detect the start of a new commit
         elif commit_match:
             self.CloseCommit()
-            # TODO: We should store the whole hash, and just display a subset
-            self.commit = commit.Commit(commit_match.group(1)[:8])
+            self.commit = commit.Commit(commit_match.group(1))
 
         # Detect tags in the commit message
         elif tag_match:
@@ -374,7 +376,7 @@ def GetMetaDataForList(commit_range, git_dir=None, count=None,
     if not series:
         series = Series()
     series.allow_overwrite = allow_overwrite
-    params = gitutil.LogCmd(commit_range,reverse=True, count=count,
+    params = gitutil.LogCmd(commit_range, reverse=True, count=count,
                             git_dir=git_dir)
     stdout = command.RunPipe([params], capture=True).stdout
     ps = PatchStream(series, is_log=True)
@@ -467,8 +469,10 @@ def InsertCoverLetter(fname, series, count):
     prefix = series.GetPatchPrefix()
     for line in lines:
         if line.startswith('Subject:'):
-            # TODO: if more than 10 patches this should save 00/xx, not 0/xx
-            line = 'Subject: [%s 0/%d] %s\n' % (prefix, count, text[0])
+            # if more than 10 or 100 patches, it should say 00/xx, 000/xxx, etc
+            zero_repeat = int(math.log10(count)) + 1
+            zero = '0' * zero_repeat
+            line = 'Subject: [%s %s/%d] %s\n' % (prefix, zero, count, text[0])
 
         # Insert our cover letter
         elif line.startswith('*** BLURB HERE ***'):

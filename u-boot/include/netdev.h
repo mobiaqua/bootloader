@@ -25,9 +25,6 @@ int board_eth_init(bd_t *bis);
 int cpu_eth_init(bd_t *bis);
 
 /* Driver initialization prototypes */
-int altera_tse_initialize(u8 dev_num, int mac_base,
-			  int sgdma_rx_base, int sgdma_tx_base,
-			  u32 sgdma_desc_base, u32 sgdma_desc_size);
 int at91emac_register(bd_t *bis, unsigned long iobase);
 int au1x00_enet_initialize(bd_t*);
 int ax88180_initialize(bd_t *bis);
@@ -55,9 +52,9 @@ int ftmac100_initialize(bd_t *bits);
 int ftmac110_initialize(bd_t *bits);
 int greth_initialize(bd_t *bis);
 void gt6426x_eth_initialize(bd_t *bis);
-int ks8695_eth_initialize(void);
 int ks8851_mll_initialize(u8 dev_num, int base_addr);
 int lan91c96_initialize(u8 dev_num, int base_addr);
+int lpc32xx_eth_initialize(bd_t *bis);
 int macb_eth_initialize(int id, void *regs, unsigned int phy_addr);
 int mcdmafec_initialize(bd_t *bis);
 int mcffec_initialize(bd_t *bis);
@@ -79,21 +76,12 @@ int sh_eth_initialize(bd_t *bis);
 int skge_initialize(bd_t *bis);
 int smc91111_initialize(u8 dev_num, int base_addr);
 int smc911x_initialize(u8 dev_num, int base_addr);
-int sunxi_emac_initialize(bd_t *bis);
-int sunxi_gmac_initialize(bd_t *bis);
 int tsi108_eth_initialize(bd_t *bis);
 int uec_standard_init(bd_t *bis);
 int uli526x_initialize(bd_t *bis);
 int armada100_fec_register(unsigned long base_addr);
-int xilinx_axiemac_initialize(bd_t *bis, unsigned long base_addr,
-							unsigned long dma_addr);
-int xilinx_emaclite_of_init(const void *blob);
-int xilinx_emaclite_initialize(bd_t *bis, unsigned long base_addr,
-							int txpp, int rxpp);
 int xilinx_ll_temac_eth_init(bd_t *bis, unsigned long base_addr, int flags,
 						unsigned long ctrl_addr);
-int zynq_gem_of_init(const void *blob);
-int zynq_gem_initialize(bd_t *bis, int base_addr, int phy_addr, u32 emio);
 /*
  * As long as the Xilinx xps_ll_temac ethernet driver has not its own interface
  * exported by a public hader file, we need a global definition at this point.

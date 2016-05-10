@@ -19,6 +19,7 @@
 #include <asm/arch/mipi_dsim.h>
 #include <asm/arch/dp_info.h>
 #include <asm/arch/system.h>
+#include <asm/gpio.h>
 #include <asm-generic/errno.h>
 
 #include "exynos_fb.h"
@@ -27,7 +28,7 @@ DECLARE_GLOBAL_DATA_PTR;
 
 static unsigned int panel_width, panel_height;
 
-#ifdef CONFIG_OF_CONTROL
+#if CONFIG_IS_ENABLED(OF_CONTROL)
 vidinfo_t panel_info  = {
 	/*
 	 * Insert a value here so that we don't end up in the BSS
@@ -36,6 +37,15 @@ vidinfo_t panel_info  = {
 	.vl_col = -1,
 };
 #endif
+
+ushort *configuration_get_cmap(void)
+{
+#if defined(CONFIG_LCD_LOGO)
+	return bmp_logo_palette;
+#else
+	return NULL;
+#endif
+}
 
 static void exynos_lcd_init_mem(void *lcdbase, vidinfo_t *vid)
 {
@@ -93,6 +103,10 @@ __weak int exynos_lcd_misc_init(vidinfo_t *vid)
 
 static void lcd_panel_on(vidinfo_t *vid)
 {
+	struct gpio_desc pwm_out_gpio;
+	struct gpio_desc bl_en_gpio;
+	unsigned int node;
+
 	udelay(vid->init_delay);
 
 	exynos_backlight_reset();
@@ -112,6 +126,22 @@ static void lcd_panel_on(vidinfo_t *vid)
 
 	exynos_backlight_on(1);
 
+#if CONFIG_IS_ENABLED(OF_CONTROL)
+	node = fdtdec_next_compatible(gd->fdt_blob, 0,
+						COMPAT_SAMSUNG_EXYNOS_FIMD);
+	if (node <= 0) {
+		debug("FIMD: Can't get device node for FIMD\n");
+		return;
+	}
+	gpio_request_by_name_nodev(gd->fdt_blob, node, "samsung,pwm-out-gpio",
+				   0, &pwm_out_gpio,
+				   GPIOD_IS_OUT | GPIOD_IS_OUT_ACTIVE);
+
+	gpio_request_by_name_nodev(gd->fdt_blob, node, "samsung,bl-en-gpio", 0,
+				   &bl_en_gpio,
+				   GPIOD_IS_OUT | GPIOD_IS_OUT_ACTIVE);
+
+#endif
 	exynos_cfg_ldo();
 
 	exynos_enable_ldo(1);
@@ -120,7 +150,7 @@ static void lcd_panel_on(vidinfo_t *vid)
 		exynos_mipi_dsi_init();
 }
 
-#ifdef CONFIG_OF_CONTROL
+#if CONFIG_IS_ENABLED(OF_CONTROL)
 int exynos_lcd_early_init(const void *blob)
 {
 	unsigned int node;
@@ -265,7 +295,7 @@ void lcd_ctrl_init(void *lcdbase)
 	set_system_display_ctrl();
 	set_lcd_clk();
 
-#ifdef CONFIG_OF_CONTROL
+#if CONFIG_IS_ENABLED(OF_CONTROL)
 #ifdef CONFIG_EXYNOS_MIPI_DSIM
 	exynos_init_dsim_platform_data(&panel_info);
 #endif

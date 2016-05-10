@@ -32,4 +32,9 @@
 #define ARM_PSCI_RET_INVAL		(-2)
 #define ARM_PSCI_RET_DENIED		(-3)
 
+#ifndef __ASSEMBLY__
+int psci_update_dt(void *fdt);
+void psci_board_init(void);
+#endif /* ! __ASSEMBLY__ */
+
 #endif /* __ARM_PSCI_H__ */

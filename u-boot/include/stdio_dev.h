@@ -16,14 +16,12 @@
 
 #define DEV_FLAGS_INPUT	 0x00000001	/* Device can be used as input	console */
 #define DEV_FLAGS_OUTPUT 0x00000002	/* Device can be used as output console */
-#define DEV_FLAGS_SYSTEM 0x80000000	/* Device is a system device		*/
-#define DEV_EXT_VIDEO	 0x00000001	/* Video extensions supported		*/
 
 /* Device information */
 struct stdio_dev {
 	int	flags;			/* Device flags: input/output/system	*/
 	int	ext;			/* Supported extensions			*/
-	char	name[16];		/* Device name				*/
+	char	name[32];		/* Device name				*/
 
 /* GENERAL functions */
 

@@ -42,13 +42,8 @@
 /*
  * Command line configuration.
  */
-#define CONFIG_CMD_FLASH
 #define CONFIG_CMD_CONSOLE
 #define CONFIG_CMD_ECHO
-#define CONFIG_CMD_EDITENV
-#define CONFIG_CMD_LOADB
-#define CONFIG_CMD_RUN
-#define CONFIG_CMD_SAVEENV
 #define CONFIG_CMD_JFFS2
 #define CONFIG_CMD_FAT
 #define CONFIG_CMD_FS_GENERIC
@@ -76,7 +71,6 @@
  * Miscellaneous configurable options
  */
 #define CONFIG_SYS_LONGHELP	/* undef to save memory */
-#define CONFIG_SYS_PROMPT		"h3600# "
 #define CONFIG_SYS_CBSIZE		256	/* console buffsize */
 #define CONFIG_SYS_PBSIZE		(256 + sizeof(CONFIG_SYS_PROMPT) + 16)
 #define CONFIG_SYS_MAXARGS		16	/* max number of command args */

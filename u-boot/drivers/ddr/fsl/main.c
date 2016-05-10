@@ -1,9 +1,7 @@
 /*
  * Copyright 2008-2014 Freescale Semiconductor, Inc.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * Version 2 as published by the Free Software Foundation.
+ * SPDX-License-Identifier:	GPL-2.0
  */
 
 /*
@@ -106,7 +104,8 @@ static void __get_spd(generic_spd_eeprom_t *spd, u8 i2c_address)
 		i2c_write(SPD_SPA1_ADDRESS, 0, 1, &dummy, 1);
 		ret = i2c_read(i2c_address, 0, 1,
 			       (uchar *)((ulong)spd + 256),
-			       min(256, sizeof(generic_spd_eeprom_t) - 256));
+			       min(256,
+				   (int)sizeof(generic_spd_eeprom_t) - 256));
 	}
 #else
 	ret = i2c_read(i2c_address, 0, 1, (uchar *)spd,
@@ -134,6 +133,13 @@ static void __get_spd(generic_spd_eeprom_t *spd, u8 i2c_address)
 __attribute__((weak, alias("__get_spd")))
 void get_spd(generic_spd_eeprom_t *spd, u8 i2c_address);
 
+/* This function allows boards to update SPD address */
+__weak void update_spd_address(unsigned int ctrl_num,
+			       unsigned int slot,
+			       unsigned int *addr)
+{
+}
+
 void fsl_ddr_get_spd(generic_spd_eeprom_t *ctrl_dimms_spd,
 		      unsigned int ctrl_num, unsigned int dimm_slots_per_ctrl)
 {
@@ -147,6 +153,7 @@ void fsl_ddr_get_spd(generic_spd_eeprom_t *ctrl_dimms_spd,
 
 	for (i = 0; i < dimm_slots_per_ctrl; i++) {
 		i2c_address = spd_i2c_addr[ctrl_num][i];
+		update_spd_address(ctrl_num, i, &i2c_address);
 		get_spd(&(ctrl_dimms_spd[i]), i2c_address);
 	}
 }
@@ -449,9 +456,10 @@ fsl_ddr_compute(fsl_ddr_info_t *pinfo, unsigned int start_step,
 					&(pinfo->spd_installed_dimms[i][j]);
 				dimm_params_t *pdimm =
 					&(pinfo->dimm_params[i][j]);
-				retval = compute_dimm_parameters(spd, pdimm, i);
+				retval = compute_dimm_parameters(
+							i, spd, pdimm, j);
 #ifdef CONFIG_SYS_DDR_RAW_TIMING
-				if (!i && !j && retval) {
+				if (!j && retval) {
 					printf("SPD error on controller %d! "
 					"Trying fallback to raw timing "
 					"calculation\n", i);
@@ -506,10 +514,11 @@ fsl_ddr_compute(fsl_ddr_info_t *pinfo, unsigned int start_step,
 		for (i = first_ctrl; i <= last_ctrl; i++) {
 			debug("Computing lowest common DIMM"
 				" parameters for memctl=%u\n", i);
-			compute_lowest_common_dimm_parameters(
-				pinfo->dimm_params[i],
-				&timing_params[i],
-				CONFIG_DIMM_SLOTS_PER_CTLR);
+			compute_lowest_common_dimm_parameters
+				(i,
+				 pinfo->dimm_params[i],
+				 &timing_params[i],
+				 CONFIG_DIMM_SLOTS_PER_CTLR);
 		}
 
 	case STEP_GATHER_OPTS:
@@ -524,7 +533,7 @@ fsl_ddr_compute(fsl_ddr_info_t *pinfo, unsigned int start_step,
 			 * which is currently STEP_ASSIGN_ADDRESSES.
 			 */
 			populate_memctl_options(
-					timing_params[i].all_dimms_registered,
+					&timing_params[i],
 					&pinfo->memctl_opts[i],
 					pinfo->dimm_params[i], i);
 			/*
@@ -561,12 +570,13 @@ fsl_ddr_compute(fsl_ddr_info_t *pinfo, unsigned int start_step,
 				continue;
 			}
 
-			compute_fsl_memctl_config_regs(
-					&pinfo->memctl_opts[i],
-					&ddr_reg[i], &timing_params[i],
-					pinfo->dimm_params[i],
-					dbw_capacity_adjust[i],
-					size_only);
+			compute_fsl_memctl_config_regs
+				(i,
+				 &pinfo->memctl_opts[i],
+				 &ddr_reg[i], &timing_params[i],
+				 pinfo->dimm_params[i],
+				 dbw_capacity_adjust[i],
+				 size_only);
 		}
 
 	default:
@@ -688,6 +698,10 @@ phys_size_t __fsl_ddr_sdram(fsl_ddr_info_t *pinfo)
 		}
 	}
 
+#ifdef CONFIG_FSL_DDR_SYNC_REFRESH
+	fsl_ddr_sync_memctl_refresh(first_ctrl, last_ctrl);
+#endif
+
 #ifdef CONFIG_PPC
 	/* program LAWs */
 	for (i = first_ctrl; i <= last_ctrl; i++) {
@@ -797,6 +811,7 @@ phys_size_t fsl_ddr_sdram(void)
 	info.board_need_mem_reset = board_need_mem_reset;
 	info.board_mem_reset = board_assert_mem_reset;
 	info.board_mem_de_reset = board_deassert_mem_reset;
+	remove_unused_controllers(&info);
 
 	return __fsl_ddr_sdram(&info);
 }
@@ -842,6 +857,7 @@ fsl_ddr_sdram_size(void)
 	info.num_ctrls = CONFIG_SYS_FSL_DDR_MAIN_NUM_CTRLS;
 	info.dimm_slots_per_ctrl = CONFIG_DIMM_SLOTS_PER_CTLR;
 	info.board_need_mem_reset = NULL;
+	remove_unused_controllers(&info);
 
 	/* Compute it once normally. */
 	total_memory = fsl_ddr_compute(&info, STEP_GET_SPD, 1);

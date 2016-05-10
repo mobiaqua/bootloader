@@ -44,6 +44,8 @@ struct f_dfu {
 	unsigned int                    poll_timeout;
 };
 
+struct dfu_entity *dfu_defer_flush;
+
 typedef int (*dfu_state_fn) (struct f_dfu *,
 			     const struct usb_ctrlrequest *,
 			     struct usb_gadget *,
@@ -167,14 +169,7 @@ static void dnload_request_complete(struct usb_ep *ep, struct usb_request *req)
 static void dnload_request_flush(struct usb_ep *ep, struct usb_request *req)
 {
 	struct f_dfu *f_dfu = req->context;
-	int ret;
-
-	ret = dfu_flush(dfu_get_entity(f_dfu->altsetting), req->buf,
-			req->length, f_dfu->blk_seq_num);
-	if (ret) {
-		f_dfu->dfu_status = DFU_STATUS_errUNKNOWN;
-		f_dfu->dfu_state = DFU_STATE_dfuERROR;
-	}
+	dfu_set_defer_flush(dfu_get_entity(f_dfu->altsetting));
 }
 
 static inline int dfu_get_manifest_timeout(struct dfu_entity *dfu)
@@ -366,7 +361,7 @@ static int state_dfu_idle(struct f_dfu *f_dfu,
 		to_runtime_mode(f_dfu);
 		f_dfu->dfu_state = DFU_STATE_appIDLE;
 
-		dfu_trigger_detach();
+		g_dnl_trigger_detach();
 		break;
 	default:
 		f_dfu->dfu_state = DFU_STATE_dfuERROR;
@@ -780,6 +775,13 @@ static int dfu_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
 	return 0;
 }
 
+static int __dfu_get_alt(struct usb_function *f, unsigned intf)
+{
+	struct f_dfu *f_dfu = func_to_dfu(f);
+
+	return f_dfu->altsetting;
+}
+
 /* TODO: is this really what we need here? */
 static void dfu_disable(struct usb_function *f)
 {
@@ -806,6 +808,7 @@ static int dfu_bind_config(struct usb_configuration *c)
 	f_dfu->usb_function.bind = dfu_bind;
 	f_dfu->usb_function.unbind = dfu_unbind;
 	f_dfu->usb_function.set_alt = dfu_set_alt;
+	f_dfu->usb_function.get_alt = __dfu_get_alt;
 	f_dfu->usb_function.disable = dfu_disable;
 	f_dfu->usb_function.strings = dfu_generic_strings;
 	f_dfu->usb_function.setup = dfu_handle;

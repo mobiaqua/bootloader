@@ -3,22 +3,11 @@
  *
  * Copyright (C) 2008  Yoshihiro Shimoda <shimoda.yoshihiro@renesas.com>
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; version 2 of the License.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
- *
+ * SPDX-License-Identifier:	GPL-2.0
  */
 
 #include <common.h>
+#include <console.h>
 #include <usb.h>
 #include <asm/io.h>
 
@@ -550,9 +539,6 @@ static int check_usb_device_connecting(struct r8a66597 *r8a66597)
 	return -1;	/* fail */
 }
 
-/* based on usb_ohci.c */
-#define min_t(type, x, y) \
-		({ type __x = (x); type __y = (y); __x < __y ? __x : __y; })
 /*-------------------------------------------------------------------------*
  * Virtual Root Hub
  *-------------------------------------------------------------------------*/

@@ -36,7 +36,7 @@ fields which are common to all architectures. Architecture-specific fields
 have been moved to separate structures.
 
 
-Supported Arcthitectures
+Supported Architectures
 ------------------------
 
 If you are unlucky then your architecture may not support generic board.
@@ -44,16 +44,18 @@ The following architectures are supported now:
 
    arc
    arm
+   avr32
+   blackfin
+   m68k
+   microblaze
    mips
+   nios2
    powerpc
    sandbox
    x86
 
-If your architecture is not supported, you need to adjust your
-arch/<arch>/config.mk file to include:
-
-   __HAVE_ARCH_GENERIC_BOARD := y
-
+If your architecture is not supported, you need to select
+HAVE_GENERIC_BOARD in arch/Kconfig
 and test it with a suitable board, as follows.
 
 
@@ -103,12 +105,12 @@ places.
 initialisation is painful since it must be independently added in 10
 places.
 
-3. As time goes by the architectures naturely diverge since there is limited
-pressure to compare features or even CONFIG options against simiilar things
+3. As time goes by the architectures naturally diverge since there is limited
+pressure to compare features or even CONFIG options against similar things
 in other board.c files.
 
 4. New architectures must implement all the features all over again, and
-sometimes in subtley different ways. This places an unfair burden on getting
+sometimes in subtle different ways. This places an unfair burden on getting
 a new architecture fully functional and running with U-Boot.
 
 5. While it is a bit of a tricky change, I believe it is worthwhile and

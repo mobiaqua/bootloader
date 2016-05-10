@@ -46,7 +46,7 @@ static inline void sync(void)
 static inline void *
 map_physmem(phys_addr_t paddr, unsigned long len, unsigned long flags)
 {
-	return (void *)paddr;
+	return (void *)((unsigned long)paddr);
 }
 
 /*
@@ -59,7 +59,7 @@ static inline void unmap_physmem(void *vaddr, unsigned long flags)
 
 static inline phys_addr_t virt_to_phys(void * vaddr)
 {
-	return (phys_addr_t)(vaddr);
+	return (phys_addr_t)((unsigned long)vaddr);
 }
 
 /*
@@ -283,6 +283,13 @@ static inline void __raw_readsl(unsigned long addr, void *data, int longlen)
 #define insb_p(port,to,len)		insb(port,to,len)
 #define insw_p(port,to,len)		insw(port,to,len)
 #define insl_p(port,to,len)		insl(port,to,len)
+
+#define writesl(a, d, s)	__raw_writesl((unsigned long)a, d, s)
+#define readsl(a, d, s)		__raw_readsl((unsigned long)a, d, s)
+#define writesw(a, d, s)	__raw_writesw((unsigned long)a, d, s)
+#define readsw(a, d, s)		__raw_readsw((unsigned long)a, d, s)
+#define writesb(a, d, s)	__raw_writesb((unsigned long)a, d, s)
+#define readsb(a, d, s)		__raw_readsb((unsigned long)a, d, s)
 
 /*
  * ioremap and friends.

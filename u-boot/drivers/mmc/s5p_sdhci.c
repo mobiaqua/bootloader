@@ -30,7 +30,7 @@ static void s5p_sdhci_set_control_reg(struct sdhci_host *host)
 	sdhci_writel(host, SDHCI_CTRL4_DRIVE_MASK(0x3), SDHCI_CONTROL4);
 
 	val = sdhci_readl(host, SDHCI_CONTROL2);
-	val &= SDHCI_CTRL2_SELBASECLK_SHIFT;
+	val &= SDHCI_CTRL2_SELBASECLK_MASK(3);
 
 	val |=	SDHCI_CTRL2_ENSTAASYNCCLR |
 		SDHCI_CTRL2_ENCMDCNFMSK |
@@ -76,7 +76,6 @@ static int s5p_sdhci_core_init(struct sdhci_host *host)
 	host->set_control_reg = &s5p_sdhci_set_control_reg;
 	host->set_clock = set_mmc_clk;
 
-	host->host_caps = MMC_MODE_HC;
 	if (host->bus_width == 8)
 		host->host_caps |= MMC_MODE_8BIT;
 
@@ -85,9 +84,9 @@ static int s5p_sdhci_core_init(struct sdhci_host *host)
 
 int s5p_sdhci_init(u32 regbase, int index, int bus_width)
 {
-	struct sdhci_host *host = malloc(sizeof(struct sdhci_host));
+	struct sdhci_host *host = calloc(1, sizeof(struct sdhci_host));
 	if (!host) {
-		printf("sdhci__host malloc fail!\n");
+		printf("sdhci__host allocation fail!\n");
 		return 1;
 	}
 	host->ioaddr = (void *)regbase;
@@ -97,40 +96,36 @@ int s5p_sdhci_init(u32 regbase, int index, int bus_width)
 	return s5p_sdhci_core_init(host);
 }
 
-#ifdef CONFIG_OF_CONTROL
+#if CONFIG_IS_ENABLED(OF_CONTROL)
 struct sdhci_host sdhci_host[SDHCI_MAX_HOSTS];
 
 static int do_sdhci_init(struct sdhci_host *host)
 {
-	char str[20];
-	int dev_id, flag;
-	int err = 0;
+	int dev_id, flag, ret;
 
 	flag = host->bus_width == 8 ? PINMUX_FLAG_8BIT_MODE : PINMUX_FLAG_NONE;
 	dev_id = host->index + PERIPH_ID_SDMMC0;
 
-	if (fdt_gpio_isvalid(&host->pwr_gpio)) {
-		sprintf(str, "sdhci%d_power", host->index & 0xf);
-		gpio_request(host->pwr_gpio.gpio, str);
-		gpio_direction_output(host->pwr_gpio.gpio, 1);
-		err = exynos_pinmux_config(dev_id, flag);
-		if (err) {
+	ret = exynos_pinmux_config(dev_id, flag);
+	if (ret) {
+		printf("external SD not configured\n");
+		return ret;
+	}
+
+	if (dm_gpio_is_valid(&host->pwr_gpio)) {
+		dm_gpio_set_value(&host->pwr_gpio, 1);
+		ret = exynos_pinmux_config(dev_id, flag);
+		if (ret) {
 			debug("MMC not configured\n");
-			return err;
+			return ret;
 		}
 	}
 
-	if (fdt_gpio_isvalid(&host->cd_gpio)) {
-		sprintf(str, "sdhci%d_cd", host->index & 0xf);
-		gpio_request(host->cd_gpio.gpio, str);
-		gpio_direction_input(host->cd_gpio.gpio);
-		if (gpio_get_value(host->cd_gpio.gpio))
+	if (dm_gpio_is_valid(&host->cd_gpio)) {
+		ret = dm_gpio_get_value(&host->cd_gpio);
+		if (ret) {
+			debug("no SD card detected (%d)\n", ret);
 			return -ENODEV;
-
-		err = exynos_pinmux_config(dev_id, flag);
-		if (err) {
-			printf("external SD not configured\n");
-			return err;
 		}
 	}
 
@@ -166,8 +161,10 @@ static int sdhci_get_config(const void *blob, int node, struct sdhci_host *host)
 	}
 	host->ioaddr = (void *)base;
 
-	fdtdec_decode_gpio(blob, node, "pwr-gpios", &host->pwr_gpio);
-	fdtdec_decode_gpio(blob, node, "cd-gpios", &host->cd_gpio);
+	gpio_request_by_name_nodev(blob, node, "pwr-gpios", 0, &host->pwr_gpio,
+				   GPIOD_IS_OUT);
+	gpio_request_by_name_nodev(blob, node, "cd-gpios", 0, &host->cd_gpio,
+				   GPIOD_IS_IN);
 
 	return 0;
 }
@@ -175,7 +172,8 @@ static int sdhci_get_config(const void *blob, int node, struct sdhci_host *host)
 static int process_nodes(const void *blob, int node_list[], int count)
 {
 	struct sdhci_host *host;
-	int i, node;
+	int i, node, ret;
+	int failed = 0;
 
 	debug("%s: count = %d\n", __func__, count);
 
@@ -187,13 +185,22 @@ static int process_nodes(const void *blob, int node_list[], int count)
 
 		host = &sdhci_host[i];
 
-		if (sdhci_get_config(blob, node, host)) {
-			printf("%s: failed to decode dev %d\n",	__func__, i);
-			return -1;
+		ret = sdhci_get_config(blob, node, host);
+		if (ret) {
+			printf("%s: failed to decode dev %d (%d)\n",	__func__, i, ret);
+			failed++;
+			continue;
 		}
-		do_sdhci_init(host);
+
+		ret = do_sdhci_init(host);
+		if (ret && ret != -ENODEV) {
+			printf("%s: failed to initialize dev %d (%d)\n", __func__, i, ret);
+			failed++;
+		}
 	}
-	return 0;
+
+	/* we only consider it an error when all nodes fail */
+	return (failed == count ? -1 : 0);
 }
 
 int exynos_mmc_init(const void *blob)
@@ -205,8 +212,6 @@ int exynos_mmc_init(const void *blob)
 			COMPAT_SAMSUNG_EXYNOS_MMC, node_list,
 			SDHCI_MAX_HOSTS);
 
-	process_nodes(blob, node_list, count);
-
-	return 1;
+	return process_nodes(blob, node_list, count);
 }
 #endif

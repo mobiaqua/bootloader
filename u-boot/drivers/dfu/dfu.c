@@ -17,7 +17,6 @@
 #include <linux/list.h>
 #include <linux/compiler.h>
 
-static bool dfu_detach_request;
 static LIST_HEAD(dfu_list);
 static int dfu_alt_num;
 static int alt_num_cnt;
@@ -39,21 +38,6 @@ __weak bool dfu_usb_get_reset(void)
 	return true;
 }
 
-bool dfu_detach(void)
-{
-	return dfu_detach_request;
-}
-
-void dfu_trigger_detach(void)
-{
-	dfu_detach_request = true;
-}
-
-void dfu_clear_detach(void)
-{
-	dfu_detach_request = false;
-}
-
 static int dfu_find_alt_num(const char *s)
 {
 	int i = 0;
@@ -71,6 +55,9 @@ int dfu_init_env_entities(char *interface, char *devstr)
 	char *env_bkp;
 	int ret;
 
+#ifdef CONFIG_SET_DFU_ALT_INFO
+	set_dfu_alt_info(interface, devstr);
+#endif
 	str_env = getenv("dfu_alt_info");
 	if (!str_env) {
 		error("\"dfu_alt_info\" env variable not defined!\n");
@@ -89,7 +76,7 @@ int dfu_init_env_entities(char *interface, char *devstr)
 }
 
 static unsigned char *dfu_buf;
-static unsigned long dfu_buf_size = CONFIG_SYS_DFU_DATA_BUF_SIZE;
+static unsigned long dfu_buf_size;
 
 unsigned char *dfu_free_buf(void)
 {
@@ -111,8 +98,12 @@ unsigned char *dfu_get_buf(struct dfu_entity *dfu)
 		return dfu_buf;
 
 	s = getenv("dfu_bufsiz");
-	dfu_buf_size = s ? (unsigned long)simple_strtol(s, NULL, 16) :
-			CONFIG_SYS_DFU_DATA_BUF_SIZE;
+	if (s)
+		dfu_buf_size = (unsigned long)simple_strtol(s, NULL, 0);
+
+	if (!s || !dfu_buf_size)
+		dfu_buf_size = CONFIG_SYS_DFU_DATA_BUF_SIZE;
+
 	if (dfu->max_buf_size && dfu_buf_size > dfu->max_buf_size)
 		dfu_buf_size = dfu->max_buf_size;
 
@@ -173,7 +164,6 @@ static int dfu_write_buffer_drain(struct dfu_entity *dfu)
 void dfu_write_transaction_cleanup(struct dfu_entity *dfu)
 {
 	/* clear everything */
-	dfu_free_buf();
 	dfu->crc = 0;
 	dfu->offset = 0;
 	dfu->i_blk_seq_num = 0;
@@ -207,9 +197,9 @@ int dfu_write(struct dfu_entity *dfu, void *buf, int size, int blk_seq_num)
 {
 	int ret;
 
-	debug("%s: name: %s buf: 0x%p size: 0x%x p_num: 0x%x offset: 0x%llx bufoffset: 0x%x\n",
+	debug("%s: name: %s buf: 0x%p size: 0x%x p_num: 0x%x offset: 0x%llx bufoffset: 0x%lx\n",
 	      __func__, dfu->name, buf, size, blk_seq_num, dfu->offset,
-	      dfu->i_buf - dfu->i_buf_start);
+	      (unsigned long)(dfu->i_buf - dfu->i_buf_start));
 
 	if (!dfu->inited) {
 		/* initial state */
@@ -289,7 +279,7 @@ static int dfu_read_buffer_fill(struct dfu_entity *dfu, void *buf, int size)
 	readn = 0;
 	while (size > 0) {
 		/* get chunk that can be read */
-		chunk = min(size, dfu->b_left);
+		chunk = min((long)size, dfu->b_left);
 		/* consume */
 		if (chunk > 0) {
 			memcpy(buf, dfu->i_buf, chunk);
@@ -348,17 +338,6 @@ int dfu_read(struct dfu_entity *dfu, void *buf, int size, int blk_seq_num)
 		dfu->r_left = dfu->get_medium_size(dfu);
 		if (dfu->r_left < 0)
 			return dfu->r_left;
-		switch (dfu->layout) {
-		case DFU_RAW_ADDR:
-		case DFU_RAM_ADDR:
-			break;
-		default:
-			if (dfu->r_left > dfu_buf_size) {
-				printf("%s: File too big for buffer\n",
-				       __func__);
-				return -EOVERFLOW;
-			}
-		}
 
 		debug("%s: %s %ld [B]\n", __func__, dfu->name, dfu->r_left);
 
@@ -394,7 +373,6 @@ int dfu_read(struct dfu_entity *dfu, void *buf, int size, int blk_seq_num)
 			      dfu_hash_algo->name, dfu->crc);
 		puts("\nUPLOAD ... done\nCtrl+C to exit ...\n");
 
-		dfu_free_buf();
 		dfu->i_blk_seq_num = 0;
 		dfu->crc = 0;
 		dfu->offset = 0;
@@ -442,6 +420,7 @@ static int dfu_fill_entity(struct dfu_entity *dfu, char *s, int alt,
 		       __func__,  interface);
 		return -1;
 	}
+	dfu_get_buf(dfu);
 
 	return 0;
 }
@@ -450,6 +429,7 @@ void dfu_free_entities(void)
 {
 	struct dfu_entity *dfu, *p, *t = NULL;
 
+	dfu_free_buf();
 	list_for_each_entry_safe_reverse(dfu, p, &dfu_list, list) {
 		list_del(&dfu->list);
 		if (dfu->free_entity)
@@ -544,11 +524,73 @@ struct dfu_entity *dfu_get_entity(int alt)
 int dfu_get_alt(char *name)
 {
 	struct dfu_entity *dfu;
+	char *str;
 
 	list_for_each_entry(dfu, &dfu_list, list) {
-		if (!strncmp(dfu->name, name, strlen(dfu->name)))
-			return dfu->alt;
+		if (dfu->name[0] != '/') {
+			if (!strncmp(dfu->name, name, strlen(dfu->name)))
+				return dfu->alt;
+		} else {
+			/*
+			 * One must also consider absolute path
+			 * (/boot/bin/uImage) available at dfu->name when
+			 * compared "plain" file name (uImage)
+			 *
+			 * It is the case for e.g. thor gadget where lthor SW
+			 * sends only the file name, so only the very last part
+			 * of path must be checked for equality
+			 */
+
+			str = strstr(dfu->name, name);
+			if (!str)
+				continue;
+
+			/*
+			 * Check if matching substring is the last element of
+			 * dfu->name (uImage)
+			 */
+			if (strlen(dfu->name) ==
+			    ((str - dfu->name) + strlen(name)))
+				return dfu->alt;
+		}
 	}
 
 	return -ENODEV;
+}
+
+int dfu_write_from_mem_addr(struct dfu_entity *dfu, void *buf, int size)
+{
+	unsigned long dfu_buf_size, write, left = size;
+	int i, ret = 0;
+	void *dp = buf;
+
+	/*
+	 * Here we must call dfu_get_buf(dfu) first to be sure that dfu_buf_size
+	 * has been properly initialized - e.g. if "dfu_bufsiz" has been taken
+	 * into account.
+	 */
+	dfu_get_buf(dfu);
+	dfu_buf_size = dfu_get_buf_size();
+	debug("%s: dfu buf size: %lu\n", __func__, dfu_buf_size);
+
+	for (i = 0; left > 0; i++) {
+		write = min(dfu_buf_size, left);
+
+		debug("%s: dp: 0x%p left: %lu write: %lu\n", __func__,
+		      dp, left, write);
+		ret = dfu_write(dfu, dp, write, i);
+		if (ret) {
+			error("DFU write failed\n");
+			return ret;
+		}
+
+		dp += write;
+		left -= write;
+	}
+
+	ret = dfu_flush(dfu, NULL, 0, i);
+	if (ret)
+		error("DFU flush failed!");
+
+	return ret;
 }

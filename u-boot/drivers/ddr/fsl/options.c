@@ -29,7 +29,240 @@ struct dynamic_odt {
 	unsigned int odt_rtt_wr;
 };
 
-#if defined(CONFIG_SYS_FSL_DDR3) || defined(CONFIG_SYS_FSL_DDR4)
+#ifdef CONFIG_SYS_FSL_DDR4
+/* Quad rank is not verified yet due availability.
+ * Replacing 20 OHM with 34 OHM since DDR4 doesn't have 20 OHM option
+ */
+static const struct dynamic_odt single_Q[4] = {
+	{	/* cs0 */
+		FSL_DDR_ODT_NEVER,
+		FSL_DDR_ODT_CS_AND_OTHER_DIMM,
+		DDR4_RTT_34_OHM,	/* unverified */
+		DDR4_RTT_120_OHM
+	},
+	{	/* cs1 */
+		FSL_DDR_ODT_NEVER,
+		FSL_DDR_ODT_NEVER,
+		DDR4_RTT_OFF,
+		DDR4_RTT_120_OHM
+	},
+	{	/* cs2 */
+		FSL_DDR_ODT_NEVER,
+		FSL_DDR_ODT_CS_AND_OTHER_DIMM,
+		DDR4_RTT_34_OHM,
+		DDR4_RTT_120_OHM
+	},
+	{	/* cs3 */
+		FSL_DDR_ODT_NEVER,
+		FSL_DDR_ODT_NEVER,	/* tied high */
+		DDR4_RTT_OFF,
+		DDR4_RTT_120_OHM
+	}
+};
+
+static const struct dynamic_odt single_D[4] = {
+	{	/* cs0 */
+		FSL_DDR_ODT_NEVER,
+		FSL_DDR_ODT_ALL,
+		DDR4_RTT_40_OHM,
+		DDR4_RTT_OFF
+	},
+	{	/* cs1 */
+		FSL_DDR_ODT_NEVER,
+		FSL_DDR_ODT_NEVER,
+		DDR4_RTT_OFF,
+		DDR4_RTT_OFF
+	},
+	{0, 0, 0, 0},
+	{0, 0, 0, 0}
+};
+
+static const struct dynamic_odt single_S[4] = {
+	{	/* cs0 */
+		FSL_DDR_ODT_NEVER,
+		FSL_DDR_ODT_ALL,
+		DDR4_RTT_40_OHM,
+		DDR4_RTT_OFF
+	},
+	{0, 0, 0, 0},
+	{0, 0, 0, 0},
+	{0, 0, 0, 0},
+};
+
+static const struct dynamic_odt dual_DD[4] = {
+	{	/* cs0 */
+		FSL_DDR_ODT_NEVER,
+		FSL_DDR_ODT_SAME_DIMM,
+		DDR4_RTT_120_OHM,
+		DDR4_RTT_OFF
+	},
+	{	/* cs1 */
+		FSL_DDR_ODT_OTHER_DIMM,
+		FSL_DDR_ODT_OTHER_DIMM,
+		DDR4_RTT_34_OHM,
+		DDR4_RTT_OFF
+	},
+	{	/* cs2 */
+		FSL_DDR_ODT_NEVER,
+		FSL_DDR_ODT_SAME_DIMM,
+		DDR4_RTT_120_OHM,
+		DDR4_RTT_OFF
+	},
+	{	/* cs3 */
+		FSL_DDR_ODT_OTHER_DIMM,
+		FSL_DDR_ODT_OTHER_DIMM,
+		DDR4_RTT_34_OHM,
+		DDR4_RTT_OFF
+	}
+};
+
+static const struct dynamic_odt dual_DS[4] = {
+	{	/* cs0 */
+		FSL_DDR_ODT_NEVER,
+		FSL_DDR_ODT_SAME_DIMM,
+		DDR4_RTT_120_OHM,
+		DDR4_RTT_OFF
+	},
+	{	/* cs1 */
+		FSL_DDR_ODT_OTHER_DIMM,
+		FSL_DDR_ODT_OTHER_DIMM,
+		DDR4_RTT_34_OHM,
+		DDR4_RTT_OFF
+	},
+	{	/* cs2 */
+		FSL_DDR_ODT_OTHER_DIMM,
+		FSL_DDR_ODT_ALL,
+		DDR4_RTT_34_OHM,
+		DDR4_RTT_120_OHM
+	},
+	{0, 0, 0, 0}
+};
+static const struct dynamic_odt dual_SD[4] = {
+	{	/* cs0 */
+		FSL_DDR_ODT_OTHER_DIMM,
+		FSL_DDR_ODT_ALL,
+		DDR4_RTT_34_OHM,
+		DDR4_RTT_120_OHM
+	},
+	{0, 0, 0, 0},
+	{	/* cs2 */
+		FSL_DDR_ODT_NEVER,
+		FSL_DDR_ODT_SAME_DIMM,
+		DDR4_RTT_120_OHM,
+		DDR4_RTT_OFF
+	},
+	{	/* cs3 */
+		FSL_DDR_ODT_OTHER_DIMM,
+		FSL_DDR_ODT_OTHER_DIMM,
+		DDR4_RTT_34_OHM,
+		DDR4_RTT_OFF
+	}
+};
+
+static const struct dynamic_odt dual_SS[4] = {
+	{	/* cs0 */
+		FSL_DDR_ODT_OTHER_DIMM,
+		FSL_DDR_ODT_ALL,
+		DDR4_RTT_34_OHM,
+		DDR4_RTT_120_OHM
+	},
+	{0, 0, 0, 0},
+	{	/* cs2 */
+		FSL_DDR_ODT_OTHER_DIMM,
+		FSL_DDR_ODT_ALL,
+		DDR4_RTT_34_OHM,
+		DDR4_RTT_120_OHM
+	},
+	{0, 0, 0, 0}
+};
+
+static const struct dynamic_odt dual_D0[4] = {
+	{	/* cs0 */
+		FSL_DDR_ODT_NEVER,
+		FSL_DDR_ODT_SAME_DIMM,
+		DDR4_RTT_40_OHM,
+		DDR4_RTT_OFF
+	},
+	{	/* cs1 */
+		FSL_DDR_ODT_NEVER,
+		FSL_DDR_ODT_NEVER,
+		DDR4_RTT_OFF,
+		DDR4_RTT_OFF
+	},
+	{0, 0, 0, 0},
+	{0, 0, 0, 0}
+};
+
+static const struct dynamic_odt dual_0D[4] = {
+	{0, 0, 0, 0},
+	{0, 0, 0, 0},
+	{	/* cs2 */
+		FSL_DDR_ODT_NEVER,
+		FSL_DDR_ODT_SAME_DIMM,
+		DDR4_RTT_40_OHM,
+		DDR4_RTT_OFF
+	},
+	{	/* cs3 */
+		FSL_DDR_ODT_NEVER,
+		FSL_DDR_ODT_NEVER,
+		DDR4_RTT_OFF,
+		DDR4_RTT_OFF
+	}
+};
+
+static const struct dynamic_odt dual_S0[4] = {
+	{	/* cs0 */
+		FSL_DDR_ODT_NEVER,
+		FSL_DDR_ODT_CS,
+		DDR4_RTT_40_OHM,
+		DDR4_RTT_OFF
+	},
+	{0, 0, 0, 0},
+	{0, 0, 0, 0},
+	{0, 0, 0, 0}
+
+};
+
+static const struct dynamic_odt dual_0S[4] = {
+	{0, 0, 0, 0},
+	{0, 0, 0, 0},
+	{	/* cs2 */
+		FSL_DDR_ODT_NEVER,
+		FSL_DDR_ODT_CS,
+		DDR4_RTT_40_OHM,
+		DDR4_RTT_OFF
+	},
+	{0, 0, 0, 0}
+
+};
+
+static const struct dynamic_odt odt_unknown[4] = {
+	{	/* cs0 */
+		FSL_DDR_ODT_NEVER,
+		FSL_DDR_ODT_CS,
+		DDR4_RTT_120_OHM,
+		DDR4_RTT_OFF
+	},
+	{	/* cs1 */
+		FSL_DDR_ODT_NEVER,
+		FSL_DDR_ODT_CS,
+		DDR4_RTT_120_OHM,
+		DDR4_RTT_OFF
+	},
+	{	/* cs2 */
+		FSL_DDR_ODT_NEVER,
+		FSL_DDR_ODT_CS,
+		DDR4_RTT_120_OHM,
+		DDR4_RTT_OFF
+	},
+	{	/* cs3 */
+		FSL_DDR_ODT_NEVER,
+		FSL_DDR_ODT_CS,
+		DDR4_RTT_120_OHM,
+		DDR4_RTT_OFF
+	}
+};
+#elif defined(CONFIG_SYS_FSL_DDR3)
 static const struct dynamic_odt single_Q[4] = {
 	{	/* cs0 */
 		FSL_DDR_ODT_NEVER,
@@ -259,7 +492,7 @@ static const struct dynamic_odt odt_unknown[4] = {
 		DDR3_RTT_OFF
 	}
 };
-#else	/* CONFIG_SYS_FSL_DDR3 || CONFIG_SYS_FSL_DDR4 */
+#else	/* CONFIG_SYS_FSL_DDR3 */
 static const struct dynamic_odt single_Q[4] = {
 	{0, 0, 0, 0},
 	{0, 0, 0, 0},
@@ -499,7 +732,7 @@ static inline unsigned int auto_bank_intlv(dimm_params_t *pdimm)
 	return 0;
 }
 
-unsigned int populate_memctl_options(int all_dimms_registered,
+unsigned int populate_memctl_options(const common_timing_params_t *common_dimm,
 			memctl_options_t *popts,
 			dimm_params_t *pdimm,
 			unsigned int ctrl_num)
@@ -640,7 +873,7 @@ unsigned int populate_memctl_options(int all_dimms_registered,
 	popts->ba_intlv_ctl = 0;
 
 	/* Memory Organization Parameters */
-	popts->registered_dimm_en = all_dimms_registered;
+	popts->registered_dimm_en = common_dimm->all_dimms_registered;
 
 	/* Operational Mode Paramters */
 
@@ -728,11 +961,16 @@ unsigned int populate_memctl_options(int all_dimms_registered,
 
 	/* Choose ddr controller address mirror mode */
 #if defined(CONFIG_SYS_FSL_DDR3) || defined(CONFIG_SYS_FSL_DDR4)
-	popts->mirrored_dimm = pdimm[0].mirrored_dimm;
+	for (i = 0; i < CONFIG_DIMM_SLOTS_PER_CTLR; i++) {
+		if (pdimm[i].n_ranks) {
+			popts->mirrored_dimm = pdimm[i].mirrored_dimm;
+			break;
+		}
+	}
 #endif
 
 	/* Global Timing Parameters. */
-	debug("mclk_ps = %u ps\n", get_memory_clk_period_ps());
+	debug("mclk_ps = %u ps\n", get_memory_clk_period_ps(ctrl_num));
 
 	/* Pick a caslat override. */
 	popts->cas_latency_override = 0;
@@ -764,8 +1002,19 @@ unsigned int populate_memctl_options(int all_dimms_registered,
 	popts->twot_en = 0;
 	popts->threet_en = 0;
 
-	/* for RDIMM, address parity enable */
-	popts->ap_en = 1;
+	/* for RDIMM and DDR4 UDIMM/discrete memory, address parity enable */
+	if (popts->registered_dimm_en)
+		popts->ap_en = 1; /* 0 = disable,  1 = enable */
+	else
+		popts->ap_en = 0; /* disabled for DDR4 UDIMM/discrete default */
+
+	if (hwconfig_sub_f("fsl_ddr", "parity", buf)) {
+		if (hwconfig_subarg_cmp_f("fsl_ddr", "parity", "on", buf)) {
+			if (popts->registered_dimm_en ||
+			    (CONFIG_FSL_SDRAM_TYPE == SDRAM_TYPE_DDR4))
+				popts->ap_en = 1;
+		}
+	}
 
 	/*
 	 * BSTTOPRE precharge interval
@@ -773,9 +1022,11 @@ unsigned int populate_memctl_options(int all_dimms_registered,
 	 * Set this to 0 for global auto precharge
 	 * The value of 0x100 has been used for DDR1, DDR2, DDR3.
 	 * It is not wrong. Any value should be OK. The performance depends on
-	 * applications. There is no one good value for all.
+	 * applications. There is no one good value for all. One way to set
+	 * is to use 1/4 of refint value.
 	 */
-	popts->bstopre = 0x100;
+	popts->bstopre = picos_to_mclk(ctrl_num, common_dimm->refresh_rate_ps)
+			 >> 2;
 
 	/*
 	 * Window for four activates -- tFAW
@@ -785,7 +1036,7 @@ unsigned int populate_memctl_options(int all_dimms_registered,
 	 * FIXME: width, was considering looking at pdimm->primary_sdram_width
 	 */
 #if defined(CONFIG_SYS_FSL_DDR1)
-	popts->tfaw_window_four_activates_ps = mclk_to_picos(1);
+	popts->tfaw_window_four_activates_ps = mclk_to_picos(ctrl_num, 1);
 
 #elif defined(CONFIG_SYS_FSL_DDR2)
 	/*
@@ -1036,7 +1287,7 @@ done:
 	if (pdimm[0].n_ranks == 4)
 		popts->quad_rank_present = 1;
 
-	ddr_freq = get_ddr_freq(0) / 1000000;
+	ddr_freq = get_ddr_freq(ctrl_num) / 1000000;
 	if (popts->registered_dimm_en) {
 		popts->rcw_override = 1;
 		popts->rcw_1 = 0x000a5a00;

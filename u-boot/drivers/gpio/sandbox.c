@@ -8,6 +8,7 @@
 #include <fdtdec.h>
 #include <malloc.h>
 #include <asm/gpio.h>
+#include <dt-bindings/gpio/gpio.h>
 
 DECLARE_GLOBAL_DATA_PTR;
 
@@ -23,7 +24,7 @@ struct gpio_state {
 /* Access routines for GPIO state */
 static u8 *get_gpio_flags(struct udevice *dev, unsigned offset)
 {
-	struct gpio_dev_priv *uc_priv = dev->uclass_priv;
+	struct gpio_dev_priv *uc_priv = dev_get_uclass_priv(dev);
 	struct gpio_state *state = dev_get_priv(dev);
 
 	if (offset >= uc_priv->gpio_count) {
@@ -130,17 +131,36 @@ static int sb_gpio_get_function(struct udevice *dev, unsigned offset)
 	return GPIOF_INPUT;
 }
 
+static int sb_gpio_xlate(struct udevice *dev, struct gpio_desc *desc,
+			 struct fdtdec_phandle_args *args)
+{
+	desc->offset = args->args[0];
+	if (args->args_count < 2)
+		return 0;
+	if (args->args[1] & GPIO_ACTIVE_LOW)
+		desc->flags |= GPIOD_ACTIVE_LOW;
+	if (args->args[1] & 2)
+		desc->flags |= GPIOD_IS_IN;
+	if (args->args[1] & 4)
+		desc->flags |= GPIOD_IS_OUT;
+	if (args->args[1] & 8)
+		desc->flags |= GPIOD_IS_OUT_ACTIVE;
+
+	return 0;
+}
+
 static const struct dm_gpio_ops gpio_sandbox_ops = {
 	.direction_input	= sb_gpio_direction_input,
 	.direction_output	= sb_gpio_direction_output,
 	.get_value		= sb_gpio_get_value,
 	.set_value		= sb_gpio_set_value,
 	.get_function		= sb_gpio_get_function,
+	.xlate			= sb_gpio_xlate,
 };
 
 static int sandbox_gpio_ofdata_to_platdata(struct udevice *dev)
 {
-	struct gpio_dev_priv *uc_priv = dev->uclass_priv;
+	struct gpio_dev_priv *uc_priv = dev_get_uclass_priv(dev);
 
 	uc_priv->gpio_count = fdtdec_get_int(gd->fdt_blob, dev->of_offset,
 					     "num-gpios", 0);
@@ -152,7 +172,7 @@ static int sandbox_gpio_ofdata_to_platdata(struct udevice *dev)
 
 static int gpio_sandbox_probe(struct udevice *dev)
 {
-	struct gpio_dev_priv *uc_priv = dev->uclass_priv;
+	struct gpio_dev_priv *uc_priv = dev_get_uclass_priv(dev);
 
 	if (dev->of_offset == -1) {
 		/* Tell the uclass how many GPIOs we have */

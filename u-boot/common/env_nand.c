@@ -19,6 +19,7 @@
 #include <environment.h>
 #include <linux/stddef.h>
 #include <malloc.h>
+#include <memalign.h>
 #include <nand.h>
 #include <search.h>
 #include <errno.h>
@@ -132,7 +133,7 @@ static int writeenv(size_t offset, u_char *buf)
 	u_char *char_ptr;
 
 	blocksize = nand_info[0].erasesize;
-	len = min(blocksize, CONFIG_ENV_SIZE);
+	len = min(blocksize, (size_t)CONFIG_ENV_SIZE);
 
 	while (amount_saved < CONFIG_ENV_SIZE && offset < end) {
 		if (nand_block_isbad(&nand_info[0], offset)) {
@@ -233,6 +234,12 @@ int saveenv(void)
 }
 #endif /* CMD_SAVEENV */
 
+#if defined(CONFIG_SPL_BUILD)
+static int readenv(size_t offset, u_char *buf)
+{
+	return nand_spl_load_image(offset, CONFIG_ENV_SIZE, buf);
+}
+#else
 static int readenv(size_t offset, u_char *buf)
 {
 	size_t end = offset + CONFIG_ENV_RANGE;
@@ -244,7 +251,7 @@ static int readenv(size_t offset, u_char *buf)
 	if (!blocksize)
 		return 1;
 
-	len = min(blocksize, CONFIG_ENV_SIZE);
+	len = min(blocksize, (size_t)CONFIG_ENV_SIZE);
 
 	while (amount_loaded < CONFIG_ENV_SIZE && offset < end) {
 		if (nand_block_isbad(&nand_info[0], offset)) {
@@ -266,6 +273,7 @@ static int readenv(size_t offset, u_char *buf)
 
 	return 0;
 }
+#endif /* #if defined(CONFIG_SPL_BUILD) */
 
 #ifdef CONFIG_ENV_OFFSET_OOB
 int get_nand_env_oob(nand_info_t *nand, unsigned long *result)

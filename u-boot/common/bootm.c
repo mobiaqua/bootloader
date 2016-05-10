@@ -13,6 +13,7 @@
 #include <fdt_support.h>
 #include <lmb.h>
 #include <malloc.h>
+#include <mapmem.h>
 #include <asm/io.h>
 #include <linux/lzo.h>
 #include <lzma/LzmaTypes.h>
@@ -107,7 +108,7 @@ static int bootm_find_os(cmd_tbl_t *cmdtp, int flag, int argc,
 		images.os.arch = image_get_arch(os_hdr);
 		break;
 #endif
-#if defined(CONFIG_FIT)
+#if IMAGE_ENABLE_FIT
 	case IMAGE_FORMAT_FIT:
 		if (fit_image_get_type(images.fit_hdr_os,
 				       images.fit_noffset_os,
@@ -179,7 +180,7 @@ static int bootm_find_os(cmd_tbl_t *cmdtp, int flag, int argc,
 		/* Kernel entry point is the setup.bin */
 	} else if (images.legacy_hdr_valid) {
 		images.ep = image_get_ep(&images.legacy_hdr_os_copy);
-#if defined(CONFIG_FIT)
+#if IMAGE_ENABLE_FIT
 	} else if (images.fit_uname_os) {
 		int ret;
 
@@ -200,12 +201,28 @@ static int bootm_find_os(cmd_tbl_t *cmdtp, int flag, int argc,
 		images.ep += images.os.load;
 	}
 
-	images.os.start = (ulong)os_hdr;
+	images.os.start = map_to_sysmem(os_hdr);
 
 	return 0;
 }
 
-static int bootm_find_ramdisk(int flag, int argc, char * const argv[])
+/**
+ * bootm_find_images - wrapper to find and locate various images
+ * @flag: Ignored Argument
+ * @argc: command argument count
+ * @argv: command argument list
+ *
+ * boot_find_images() will attempt to load an available ramdisk,
+ * flattened device tree, as well as specifically marked
+ * "loadable" images (loadables are FIT only)
+ *
+ * Note: bootm_find_images will skip an image if it is not found
+ *
+ * @return:
+ *     0, if all existing images were loaded correctly
+ *     1, if an image is found but corrupted, or invalid
+ */
+int bootm_find_images(int flag, int argc, char * const argv[])
 {
 	int ret;
 
@@ -217,14 +234,7 @@ static int bootm_find_ramdisk(int flag, int argc, char * const argv[])
 		return 1;
 	}
 
-	return 0;
-}
-
-#if defined(CONFIG_OF_LIBFDT)
-static int bootm_find_fdt(int flag, int argc, char * const argv[])
-{
-	int ret;
-
+#if IMAGE_ENABLE_OF_LIBFDT
 	/* find flattened device tree */
 	ret = boot_get_fdt(flag, argc, argv, IH_ARCH_DEFAULT, &images,
 			   &images.ft_addr, &images.ft_len);
@@ -232,21 +242,17 @@ static int bootm_find_fdt(int flag, int argc, char * const argv[])
 		puts("Could not find a valid device tree\n");
 		return 1;
 	}
-
-	set_working_fdt_addr(images.ft_addr);
-
-	return 0;
-}
+	set_working_fdt_addr((ulong)images.ft_addr);
 #endif
 
-int bootm_find_ramdisk_fdt(int flag, int argc, char * const argv[])
-{
-	if (bootm_find_ramdisk(flag, argc, argv))
+#if IMAGE_ENABLE_FIT
+	/* find all of the loadables */
+	ret = boot_get_loadable(argc, argv, &images, IH_ARCH_DEFAULT,
+			       NULL, NULL);
+	if (ret) {
+		printf("Loadable(s) is corrupt or invalid\n");
 		return 1;
-
-#if defined(CONFIG_OF_LIBFDT)
-	if (bootm_find_fdt(flag, argc, argv))
-		return 1;
+	}
 #endif
 
 	return 0;
@@ -260,114 +266,146 @@ static int bootm_find_other(cmd_tbl_t *cmdtp, int flag, int argc,
 	     (images.os.type == IH_TYPE_MULTI)) &&
 	    (images.os.os == IH_OS_LINUX ||
 		 images.os.os == IH_OS_VXWORKS))
-		return bootm_find_ramdisk_fdt(flag, argc, argv);
+		return bootm_find_images(flag, argc, argv);
 
 	return 0;
 }
-#endif /* USE_HOSTCC */
+#endif /* USE_HOSTC */
 
 /**
- * decomp_image() - decompress the operating system
+ * print_decomp_msg() - Print a suitable decompression/loading message
  *
- * @comp:	Compression algorithm that is used (IH_COMP_...)
- * @load:	Destination load address in U-Boot memory
- * @image_start Image start address (where we are decompressing from)
  * @type:	OS type (IH_OS_...)
- * @load_bug:	Place to decompress to
- * @image_buf:	Address to decompress from
- * @return 0 if OK, -ve on error (BOOTM_ERR_...)
+ * @comp_type:	Compression type being used (IH_COMP_...)
+ * @is_xip:	true if the load address matches the image start
  */
-static int decomp_image(int comp, ulong load, ulong image_start, int type,
-			void *load_buf, void *image_buf, ulong image_len,
-			ulong *load_end)
+static void print_decomp_msg(int comp_type, int type, bool is_xip)
 {
-	const char *type_name = genimg_get_type_name(type);
-	__attribute__((unused)) uint unc_len = CONFIG_SYS_BOOTM_LEN;
+	const char *name = genimg_get_type_name(type);
+
+	if (comp_type == IH_COMP_NONE)
+		printf("   %s %s ... ", is_xip ? "XIP" : "Loading", name);
+	else
+		printf("   Uncompressing %s ... ", name);
+}
+
+/**
+ * handle_decomp_error() - display a decompression error
+ *
+ * This function tries to produce a useful message. In the case where the
+ * uncompressed size is the same as the available space, we can assume that
+ * the image is too large for the buffer.
+ *
+ * @comp_type:		Compression type being used (IH_COMP_...)
+ * @uncomp_size:	Number of bytes uncompressed
+ * @unc_len:		Amount of space available for decompression
+ * @ret:		Error code to report
+ * @return BOOTM_ERR_RESET, indicating that the board must be reset
+ */
+static int handle_decomp_error(int comp_type, size_t uncomp_size,
+			       size_t unc_len, int ret)
+{
+	const char *name = genimg_get_comp_name(comp_type);
+
+	if (uncomp_size >= unc_len)
+		printf("Image too large: increase CONFIG_SYS_BOOTM_LEN\n");
+	else
+		printf("%s: uncompress error %d\n", name, ret);
+
+	/*
+	 * The decompression routines are now safe, so will not write beyond
+	 * their bounds. Probably it is not necessary to reset, but maintain
+	 * the current behaviour for now.
+	 */
+	printf("Must RESET board to recover\n");
+#ifndef USE_HOSTCC
+	bootstage_error(BOOTSTAGE_ID_DECOMP_IMAGE);
+#endif
+
+	return BOOTM_ERR_RESET;
+}
+
+int bootm_decomp_image(int comp, ulong load, ulong image_start, int type,
+		       void *load_buf, void *image_buf, ulong image_len,
+		       uint unc_len, ulong *load_end)
+{
+	int ret = 0;
 
 	*load_end = load;
+	print_decomp_msg(comp, type, load == image_start);
+
+	/*
+	 * Load the image to the right place, decompressing if needed. After
+	 * this, image_len will be set to the number of uncompressed bytes
+	 * loaded, ret will be non-zero on error.
+	 */
 	switch (comp) {
 	case IH_COMP_NONE:
-		if (load == image_start) {
-			printf("   XIP %s ... ", type_name);
-		} else {
-			printf("   Loading %s ... ", type_name);
+		if (load == image_start)
+			break;
+		if (image_len <= unc_len)
 			memmove_wd(load_buf, image_buf, image_len, CHUNKSZ);
-		}
-		*load_end = load + image_len;
+		else
+			ret = 1;
 		break;
 #ifdef CONFIG_GZIP
-	case IH_COMP_GZIP:
-		printf("   Uncompressing %s ... ", type_name);
-		if (gunzip(load_buf, unc_len, image_buf, &image_len) != 0) {
-			puts("GUNZIP: uncompress, out-of-mem or overwrite error - must RESET board to recover\n");
-			return BOOTM_ERR_RESET;
-		}
-
-		*load_end = load + image_len;
+	case IH_COMP_GZIP: {
+		ret = gunzip(load_buf, unc_len, image_buf, &image_len);
 		break;
+	}
 #endif /* CONFIG_GZIP */
 #ifdef CONFIG_BZIP2
-	case IH_COMP_BZIP2:
-		printf("   Uncompressing %s ... ", type_name);
+	case IH_COMP_BZIP2: {
+		uint size = unc_len;
+
 		/*
 		 * If we've got less than 4 MB of malloc() space,
 		 * use slower decompression algorithm which requires
 		 * at most 2300 KB of memory.
 		 */
-		int i = BZ2_bzBuffToBuffDecompress(load_buf, &unc_len,
+		ret = BZ2_bzBuffToBuffDecompress(load_buf, &size,
 			image_buf, image_len,
 			CONFIG_SYS_MALLOC_LEN < (4096 * 1024), 0);
-		if (i != BZ_OK) {
-			printf("BUNZIP2: uncompress or overwrite error %d - must RESET board to recover\n",
-			       i);
-			return BOOTM_ERR_RESET;
-		}
-
-		*load_end = load + unc_len;
+		image_len = size;
 		break;
+	}
 #endif /* CONFIG_BZIP2 */
 #ifdef CONFIG_LZMA
 	case IH_COMP_LZMA: {
 		SizeT lzma_len = unc_len;
-		int ret;
-
-		printf("   Uncompressing %s ... ", type_name);
 
 		ret = lzmaBuffToBuffDecompress(load_buf, &lzma_len,
 					       image_buf, image_len);
-		unc_len = lzma_len;
-		if (ret != SZ_OK) {
-			printf("LZMA: uncompress or overwrite error %d - must RESET board to recover\n",
-			       ret);
-			bootstage_error(BOOTSTAGE_ID_DECOMP_IMAGE);
-			return BOOTM_ERR_RESET;
-		}
-		*load_end = load + unc_len;
+		image_len = lzma_len;
 		break;
 	}
 #endif /* CONFIG_LZMA */
 #ifdef CONFIG_LZO
 	case IH_COMP_LZO: {
 		size_t size = unc_len;
-		int ret;
-
-		printf("   Uncompressing %s ... ", type_name);
 
 		ret = lzop_decompress(image_buf, image_len, load_buf, &size);
-		if (ret != LZO_E_OK) {
-			printf("LZO: uncompress or overwrite error %d - must RESET board to recover\n",
-			       ret);
-			return BOOTM_ERR_RESET;
-		}
-
-		*load_end = load + size;
+		image_len = size;
 		break;
 	}
 #endif /* CONFIG_LZO */
+#ifdef CONFIG_LZ4
+	case IH_COMP_LZ4: {
+		size_t size = unc_len;
+
+		ret = ulz4fn(image_buf, image_len, load_buf, &size);
+		image_len = size;
+		break;
+	}
+#endif /* CONFIG_LZ4 */
 	default:
 		printf("Unimplemented compression type %d\n", comp);
 		return BOOTM_ERR_UNIMPLEMENTED;
 	}
+
+	if (ret)
+		return handle_decomp_error(comp, image_len, unc_len, ret);
+	*load_end = load + image_len;
 
 	puts("OK\n");
 
@@ -390,13 +428,14 @@ static int bootm_load_os(bootm_headers_t *images, unsigned long *load_end,
 
 	load_buf = map_sysmem(load, 0);
 	image_buf = map_sysmem(os.image_start, image_len);
-	err = decomp_image(os.comp, load, os.image_start, os.type, load_buf,
-			   image_buf, image_len, load_end);
+	err = bootm_decomp_image(os.comp, load, os.image_start, os.type,
+				 load_buf, image_buf, image_len,
+				 CONFIG_SYS_BOOTM_LEN, load_end);
 	if (err) {
 		bootstage_error(BOOTSTAGE_ID_DECOMP_IMAGE);
 		return err;
 	}
-	flush_cache(load, (*load_end - load) * sizeof(ulong));
+	flush_cache(load, *load_end - load);
 
 	debug("   kernel loaded at 0x%08lx, end = 0x%08lx\n", load, *load_end);
 	bootstage_mark(BOOTSTAGE_ID_KERNEL_LOADED);
@@ -444,7 +483,9 @@ ulong bootm_disable_interrupts(void)
 #ifdef CONFIG_NETCONSOLE
 	/* Stop the ethernet stack if NetConsole could have left it up */
 	eth_halt();
+# ifndef CONFIG_DM_ETH
 	eth_unregister(eth_get_dev());
+# endif
 #endif
 
 #if defined(CONFIG_CMD_USB)
@@ -603,7 +644,7 @@ int do_bootm_states(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[],
 		}
 	}
 #endif
-#if defined(CONFIG_OF_LIBFDT) && defined(CONFIG_LMB)
+#if IMAGE_ENABLE_OF_LIBFDT && defined(CONFIG_LMB)
 	if (!ret && (states & BOOTM_STATE_FDT)) {
 		boot_fdt_add_mem_rsv_regions(&images->lmb, images->ft_addr);
 		ret = boot_relocate_fdt(&images->lmb, &images->ft_addr,
@@ -747,7 +788,7 @@ static const void *boot_get_kernel(cmd_tbl_t *cmdtp, int flag, int argc,
 	const void *buf;
 	const char	*fit_uname_config = NULL;
 	const char	*fit_uname_kernel = NULL;
-#if defined(CONFIG_FIT)
+#if IMAGE_ENABLE_FIT
 	int		os_noffset;
 #endif
 
@@ -808,7 +849,7 @@ static const void *boot_get_kernel(cmd_tbl_t *cmdtp, int flag, int argc,
 		bootstage_mark(BOOTSTAGE_ID_DECOMP_IMAGE);
 		break;
 #endif
-#if defined(CONFIG_FIT)
+#if IMAGE_ENABLE_FIT
 	case IMAGE_FORMAT_FIT:
 		os_noffset = fit_image_load(images, img_addr,
 				&fit_uname_kernel, &fit_uname_config,
@@ -882,9 +923,11 @@ static int bootm_host_load_image(const void *fit, int req_image_type)
 
 	/* Allow the image to expand by a factor of 4, should be safe */
 	load_buf = malloc((1 << 20) + len * 4);
-	ret = decomp_image(imape_comp, 0, data, image_type, load_buf,
-			   (void *)data, len, &load_end);
+	ret = bootm_decomp_image(imape_comp, 0, data, image_type, load_buf,
+				 (void *)data, len, CONFIG_SYS_BOOTM_LEN,
+				 &load_end);
 	free(load_buf);
+
 	if (ret && ret != BOOTM_ERR_UNIMPLEMENTED)
 		return ret;
 

@@ -12,11 +12,16 @@
 #include <pci.h>
 #include <usb.h>
 #include <asm/io.h>
-#include <usb/ehci-fsl.h>
+#include <usb/ehci-ci.h>
 #include <hwconfig.h>
-#include <asm/fsl_errata.h>
+#include <fsl_usb.h>
+#include <fdt_support.h>
 
 #include "ehci.h"
+
+#ifndef CONFIG_USB_MAX_CONTROLLER_COUNT
+#define CONFIG_USB_MAX_CONTROLLER_COUNT 1
+#endif
 
 static void set_txfifothresh(struct usb_ehci *, u32);
 
@@ -71,7 +76,7 @@ int ehci_hcd_init(int index, enum usb_init_type init,
 		break;
 	default:
 		printf("ERROR: wrong controller index!!\n");
-		break;
+		return -EINVAL;
 	};
 
 	*hccr = (struct ehci_hccr *)((uint32_t)&ehci->caplength);
@@ -130,10 +135,19 @@ int ehci_hcd_init(int index, enum usb_init_type init,
 
 	in_le32(&ehci->usbmode);
 
-	if (SVR_SOC_VER(get_svr()) == SVR_T4240 &&
-	    IS_SVR_REV(get_svr(), 2, 0))
+	if (has_erratum_a007798())
 		set_txfifothresh(ehci, TXFIFOTHRESH);
 
+	if (has_erratum_a004477()) {
+		/*
+		 * When reset is issued while any ULPI transaction is ongoing
+		 * then it may result to corruption of ULPI Function Control
+		 * Register which eventually causes phy clock to enter low
+		 * power mode which stops the clock. Thus delay is required
+		 * before reset to let ongoing ULPI transaction complete.
+		 */
+		udelay(1);
+	}
 	return 0;
 }
 

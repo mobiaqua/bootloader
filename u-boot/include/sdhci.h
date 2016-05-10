@@ -12,7 +12,7 @@
 
 #include <asm/io.h>
 #include <mmc.h>
-#include <fdtdec.h>
+#include <asm/gpio.h>
 
 /*
  * Controller registers
@@ -235,7 +235,7 @@ struct sdhci_ops {
 };
 
 struct sdhci_host {
-	char *name;
+	const char *name;
 	void *ioaddr;
 	unsigned int quirks;
 	unsigned int host_caps;
@@ -246,8 +246,8 @@ struct sdhci_host {
 	int index;
 
 	int bus_width;
-	struct fdt_gpio_state pwr_gpio;	/* Power GPIO */
-	struct fdt_gpio_state cd_gpio;		/* Card Detect GPIO */
+	struct gpio_desc pwr_gpio;	/* Power GPIO */
+	struct gpio_desc cd_gpio;		/* Card Detect GPIO */
 
 	void (*set_control_reg)(struct sdhci_host *host);
 	void (*set_clock)(int dev_index, unsigned int div);

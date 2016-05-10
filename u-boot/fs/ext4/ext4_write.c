@@ -23,6 +23,7 @@
 
 
 #include <common.h>
+#include <memalign.h>
 #include <linux/stat.h>
 #include <div64.h>
 #include "ext4_common.h"
@@ -972,6 +973,32 @@ fail:
 	free(inode_buffer);
 	free(g_parent_inode);
 	g_parent_inode = NULL;
+
+	return -1;
+}
+
+int ext4_write_file(const char *filename, void *buf, loff_t offset,
+		    loff_t len, loff_t *actwrite)
+{
+	int ret;
+
+	if (offset != 0) {
+		printf("** Cannot support non-zero offset **\n");
+		return -1;
+	}
+
+	ret = ext4fs_write(filename, buf, len);
+	if (ret) {
+		printf("** Error ext4fs_write() **\n");
+		goto fail;
+	}
+
+	*actwrite = len;
+
+	return 0;
+
+fail:
+	*actwrite = 0;
 
 	return -1;
 }

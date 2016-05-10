@@ -52,12 +52,15 @@ will get a consistent result each time.
 How to configure it
 ===================
 
-For most cases of using patman for U-Boot development, patman will
-locate and use the file 'doc/git-mailrc' in your U-Boot directory.
-This contains most of the aliases you will need.
+For most cases of using patman for U-Boot development, patman can use the
+file 'doc/git-mailrc' in your U-Boot directory to supply the email aliases
+you need. To make this work, tell git where to find the file by typing
+this once:
 
-For Linux the 'scripts/get_maintainer.pl' handles figuring out where
-to send patches pretty well.
+    git config sendemail.aliasesfile doc/git-mailrc
+
+For both Linux and U-Boot the 'scripts/get_maintainer.pl' handles figuring
+out where to send patches pretty well.
 
 During the first run patman creates a config file for you by taking the default
 user name and email address from the global .gitconfig file.
@@ -132,6 +135,17 @@ Similar to the above, but skip the first commit and take the next 5. This
 is useful if your top commit is for setting up testing.
 
 
+How to install it
+=================
+
+The most up to date version of patman can be found in the U-Boot sources.
+However to use it on other projects it may be more convenient to install it as
+a standalone application. A distutils installer is included, this can be used
+to install patman:
+
+$ cd tools/patman && python setup.py install
+
+
 How to add tags
 ===============
 
@@ -151,7 +165,11 @@ Series-version: n
 
 Series-prefix: prefix
 	Sets the subject prefix. Normally empty but it can be RFC for
-	RFC patches, or RESEND if you are being ignored.
+	RFC patches, or RESEND if you are being ignored. The patch subject
+	is like [RFC PATCH] or [RESEND PATCH].
+	In the meantime, git format.subjectprefix option will be added as
+	well. If your format.subjectprefix is set to InternalProject, then
+	the patch shows like: [InternalProject][RFC/RESEND PATCH]
 
 Series-name: name
 	Sets the name of the series. You don't need to have a name, and

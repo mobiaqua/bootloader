@@ -6,6 +6,8 @@
  */
 
 #include <common.h>
+#include <console.h>
+#include <debug_uart.h>
 #include <stdarg.h>
 #include <iomux.h>
 #include <malloc.h>
@@ -125,13 +127,13 @@ static int console_setfile(int file, struct stdio_dev * dev)
 		 */
 		switch (file) {
 		case stdin:
-			gd->jt[XF_getc] = dev->getc;
-			gd->jt[XF_tstc] = dev->tstc;
+			gd->jt->getc = getc;
+			gd->jt->tstc = tstc;
 			break;
 		case stdout:
-			gd->jt[XF_putc] = dev->putc;
-			gd->jt[XF_puts] = dev->puts;
-			gd->jt[XF_printf] = printf;
+			gd->jt->putc  = putc;
+			gd->jt->puts  = puts;
+			gd->jt->printf = printf;
 			break;
 		}
 		break;
@@ -199,6 +201,20 @@ static void console_putc(int file, const char c)
 	}
 }
 
+#ifdef CONFIG_PRE_CONSOLE_BUFFER
+static void console_puts_noserial(int file, const char *s)
+{
+	int i;
+	struct stdio_dev *dev;
+
+	for (i = 0; i < cd_count[file]; i++) {
+		dev = console_devices[file][i];
+		if (dev->puts != NULL && strcmp(dev->name, "serial") != 0)
+			dev->puts(dev, s);
+	}
+}
+#endif
+
 static void console_puts(int file, const char *s)
 {
 	int i;
@@ -209,11 +225,6 @@ static void console_puts(int file, const char *s)
 		if (dev->puts != NULL)
 			dev->puts(dev, s);
 	}
-}
-
-static inline void console_printdevs(int file)
-{
-	iomux_printdevs(file);
 }
 
 static inline void console_doenv(int file, struct stdio_dev *dev)
@@ -236,14 +247,17 @@ static inline void console_putc(int file, const char c)
 	stdio_devices[file]->putc(stdio_devices[file], c);
 }
 
+#ifdef CONFIG_PRE_CONSOLE_BUFFER
+static inline void console_puts_noserial(int file, const char *s)
+{
+	if (strcmp(stdio_devices[file]->name, "serial") != 0)
+		stdio_devices[file]->puts(stdio_devices[file], s);
+}
+#endif
+
 static inline void console_puts(int file, const char *s)
 {
 	stdio_devices[file]->puts(stdio_devices[file], s);
-}
-
-static inline void console_printdevs(int file)
-{
-	printf("%s\n", stdio_devices[file]->name);
 }
 
 static inline void console_doenv(int file, struct stdio_dev *dev)
@@ -354,6 +368,15 @@ int getc(void)
 	if (!gd->have_console)
 		return 0;
 
+#ifdef CONFIG_CONSOLE_RECORD
+	if (gd->console_in.start) {
+		int ch;
+
+		ch = membuff_getbyte(&gd->console_in);
+		if (ch != -1)
+			return 1;
+	}
+#endif
 	if (gd->flags & GD_FLG_DEVINIT) {
 		/* Get from the standard input */
 		return fgetc(stdin);
@@ -372,7 +395,12 @@ int tstc(void)
 
 	if (!gd->have_console)
 		return 0;
-
+#ifdef CONFIG_CONSOLE_RECORD
+	if (gd->console_in.start) {
+		if (membuff_peekbyte(&gd->console_in) != -1)
+			return 1;
+	}
+#endif
 	if (gd->flags & GD_FLG_DEVINIT) {
 		/* Test the standard input */
 		return ftstc(stdin);
@@ -381,6 +409,9 @@ int tstc(void)
 	/* Send directly to the handler */
 	return serial_tstc();
 }
+
+#define PRE_CONSOLE_FLUSHPOINT1_SERIAL			0
+#define PRE_CONSOLE_FLUSHPOINT2_EVERYTHING_BUT_SERIAL	1
 
 #ifdef CONFIG_PRE_CONSOLE_BUFFER
 #define CIRC_BUF_IDX(idx) ((idx) % (unsigned long)CONFIG_PRE_CON_BUF_SZ)
@@ -398,30 +429,54 @@ static void pre_console_puts(const char *s)
 		pre_console_putc(*s++);
 }
 
-static void print_pre_console_buffer(void)
+static void print_pre_console_buffer(int flushpoint)
 {
-	unsigned long i = 0;
-	char *buffer = (char *)CONFIG_PRE_CON_BUF_ADDR;
+	unsigned long in = 0, out = 0;
+	char *buf_in = (char *)CONFIG_PRE_CON_BUF_ADDR;
+	char buf_out[CONFIG_PRE_CON_BUF_SZ + 1];
 
 	if (gd->precon_buf_idx > CONFIG_PRE_CON_BUF_SZ)
-		i = gd->precon_buf_idx - CONFIG_PRE_CON_BUF_SZ;
+		in = gd->precon_buf_idx - CONFIG_PRE_CON_BUF_SZ;
 
-	while (i < gd->precon_buf_idx)
-		putc(buffer[CIRC_BUF_IDX(i++)]);
+	while (in < gd->precon_buf_idx)
+		buf_out[out++] = buf_in[CIRC_BUF_IDX(in++)];
+
+	buf_out[out] = 0;
+
+	switch (flushpoint) {
+	case PRE_CONSOLE_FLUSHPOINT1_SERIAL:
+		puts(buf_out);
+		break;
+	case PRE_CONSOLE_FLUSHPOINT2_EVERYTHING_BUT_SERIAL:
+		console_puts_noserial(stdout, buf_out);
+		break;
+	}
 }
 #else
 static inline void pre_console_putc(const char c) {}
 static inline void pre_console_puts(const char *s) {}
-static inline void print_pre_console_buffer(void) {}
+static inline void print_pre_console_buffer(int flushpoint) {}
 #endif
 
 void putc(const char c)
 {
 #ifdef CONFIG_SANDBOX
+	/* sandbox can send characters to stdout before it has a console */
 	if (!gd || !(gd->flags & GD_FLG_SERIAL_READY)) {
 		os_putc(c);
 		return;
 	}
+#endif
+#ifdef CONFIG_DEBUG_UART
+	/* if we don't have a console yet, use the debug UART */
+	if (!gd || !(gd->flags & GD_FLG_SERIAL_READY)) {
+		printch(c);
+		return;
+	}
+#endif
+#ifdef CONFIG_CONSOLE_RECORD
+	if (gd && (gd->flags & GD_FLG_RECORD) && gd->console_out.start)
+		membuff_putbyte(&gd->console_out, c);
 #endif
 #ifdef CONFIG_SILENT_CONSOLE
 	if (gd->flags & GD_FLG_SILENT)
@@ -441,6 +496,7 @@ void putc(const char c)
 		fputc(stdout, c);
 	} else {
 		/* Send directly to the handler */
+		pre_console_putc(c);
 		serial_putc(c);
 	}
 }
@@ -453,7 +509,20 @@ void puts(const char *s)
 		return;
 	}
 #endif
+#ifdef CONFIG_DEBUG_UART
+	if (!gd || !(gd->flags & GD_FLG_SERIAL_READY)) {
+		while (*s) {
+			int ch = *s++;
 
+			printch(ch);
+		}
+		return;
+	}
+#endif
+#ifdef CONFIG_CONSOLE_RECORD
+	if (gd && (gd->flags & GD_FLG_RECORD) && gd->console_out.start)
+		membuff_put(&gd->console_out, s, strlen(s));
+#endif
 #ifdef CONFIG_SILENT_CONSOLE
 	if (gd->flags & GD_FLG_SILENT)
 		return;
@@ -472,53 +541,36 @@ void puts(const char *s)
 		fputs(stdout, s);
 	} else {
 		/* Send directly to the handler */
+		pre_console_puts(s);
 		serial_puts(s);
 	}
 }
 
-int printf(const char *fmt, ...)
+#ifdef CONFIG_CONSOLE_RECORD
+int console_record_init(void)
 {
-	va_list args;
-	uint i;
-	char printbuffer[CONFIG_SYS_PBSIZE];
+	int ret;
 
-#if !defined(CONFIG_SANDBOX) && !defined(CONFIG_PRE_CONSOLE_BUFFER)
-	if (!gd->have_console)
-		return 0;
-#endif
+	ret = membuff_new(&gd->console_out, CONFIG_CONSOLE_RECORD_OUT_SIZE);
+	if (ret)
+		return ret;
+	ret = membuff_new(&gd->console_in, CONFIG_CONSOLE_RECORD_IN_SIZE);
 
-	va_start(args, fmt);
-
-	/* For this to work, printbuffer must be larger than
-	 * anything we ever want to print.
-	 */
-	i = vscnprintf(printbuffer, sizeof(printbuffer), fmt, args);
-	va_end(args);
-
-	/* Print the string */
-	puts(printbuffer);
-	return i;
+	return ret;
 }
 
-int vprintf(const char *fmt, va_list args)
+void console_record_reset(void)
 {
-	uint i;
-	char printbuffer[CONFIG_SYS_PBSIZE];
-
-#if defined(CONFIG_PRE_CONSOLE_BUFFER) && !defined(CONFIG_SANDBOX)
-	if (!gd->have_console)
-		return 0;
-#endif
-
-	/* For this to work, printbuffer must be larger than
-	 * anything we ever want to print.
-	 */
-	i = vscnprintf(printbuffer, sizeof(printbuffer), fmt, args);
-
-	/* Print the string */
-	puts(printbuffer);
-	return i;
+	membuff_purge(&gd->console_out);
+	membuff_purge(&gd->console_in);
 }
+
+void console_record_reset_enable(void)
+{
+	console_record_reset();
+	gd->flags |= GD_FLG_RECORD;
+}
+#endif
 
 /* test if ctrl-c was pressed */
 static int ctrlc_disabled = 0;	/* see disable_ctrl() */
@@ -589,44 +641,6 @@ void clear_ctrlc(void)
 	ctrlc_was_pressed = 0;
 }
 
-#ifdef CONFIG_MODEM_SUPPORT_DEBUG
-char	screen[1024];
-char *cursor = screen;
-int once = 0;
-inline void dbg(const char *fmt, ...)
-{
-	va_list	args;
-	uint	i;
-	char	printbuffer[CONFIG_SYS_PBSIZE];
-
-	if (!once) {
-		memset(screen, 0, sizeof(screen));
-		once++;
-	}
-
-	va_start(args, fmt);
-
-	/* For this to work, printbuffer must be larger than
-	 * anything we ever want to print.
-	 */
-	i = vsnprintf(printbuffer, sizeof(printbuffer), fmt, args);
-	va_end(args);
-
-	if ((screen + sizeof(screen) - 1 - cursor)
-	    < strlen(printbuffer) + 1) {
-		memset(screen, 0, sizeof(screen));
-		cursor = screen;
-	}
-	sprintf(cursor, printbuffer);
-	cursor += strlen(printbuffer);
-
-}
-#else
-static inline void dbg(const char *fmt, ...)
-{
-}
-#endif
-
 /** U-Boot INIT FUNCTIONS *************************************************/
 
 struct stdio_dev *search_device(int flags, const char *name)
@@ -634,6 +648,10 @@ struct stdio_dev *search_device(int flags, const char *name)
 	struct stdio_dev *dev;
 
 	dev = stdio_get_by_name(name);
+#ifdef CONFIG_VIDCONSOLE_AS_LCD
+	if (!dev && !strcmp(name, "lcd"))
+		dev = stdio_get_by_name("vidconsole");
+#endif
 
 	if (dev && (dev->flags & flags))
 		return dev;
@@ -679,7 +697,7 @@ int console_init_f(void)
 		gd->flags |= GD_FLG_SILENT;
 #endif
 
-	print_pre_console_buffer();
+	print_pre_console_buffer(PRE_CONSOLE_FLUSHPOINT1_SERIAL);
 
 	return 0;
 }
@@ -723,11 +741,11 @@ int console_init_r(void)
 #endif
 
 	/* set default handlers at first */
-	gd->jt[XF_getc] = serial_getc;
-	gd->jt[XF_tstc] = serial_tstc;
-	gd->jt[XF_putc] = serial_putc;
-	gd->jt[XF_puts] = serial_puts;
-	gd->jt[XF_printf] = serial_printf;
+	gd->jt->getc  = serial_getc;
+	gd->jt->tstc  = serial_tstc;
+	gd->jt->putc  = serial_putc;
+	gd->jt->puts  = serial_puts;
+	gd->jt->printf = serial_printf;
 
 	/* stdin stdout and stderr are in environment */
 	/* scan for it */
@@ -779,6 +797,10 @@ done:
 #ifndef CONFIG_SYS_CONSOLE_INFO_QUIET
 	stdio_print_current_devices();
 #endif /* CONFIG_SYS_CONSOLE_INFO_QUIET */
+#ifdef CONFIG_VIDCONSOLE_AS_LCD
+	if (strstr(stdoutname, "lcd"))
+		printf("Warning: Please change 'lcd' to 'vidconsole' in stdout/stderr environment vars\n");
+#endif
 
 #ifdef CONFIG_SYS_CONSOLE_ENV_OVERWRITE
 	/* set the environment variables (will overwrite previous env settings) */
@@ -794,6 +816,7 @@ done:
 	if ((stdio_devices[stdin] == NULL) && (stdio_devices[stdout] == NULL))
 		return 0;
 #endif
+	print_pre_console_buffer(PRE_CONSOLE_FLUSHPOINT2_EVERYTHING_BUT_SERIAL);
 	return 0;
 }
 
@@ -869,7 +892,7 @@ int console_init_r(void)
 	if ((stdio_devices[stdin] == NULL) && (stdio_devices[stdout] == NULL))
 		return 0;
 #endif
-
+	print_pre_console_buffer(PRE_CONSOLE_FLUSHPOINT2_EVERYTHING_BUT_SERIAL);
 	return 0;
 }
 

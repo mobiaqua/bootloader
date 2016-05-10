@@ -12,9 +12,9 @@
 #include <asm/io.h>
 #include <dm/test.h>
 #include <dm/root.h>
-#include <dm/ut.h>
 #include <dm/uclass-internal.h>
 #include <dm/util.h>
+#include <test/ut.h>
 
 DECLARE_GLOBAL_DATA_PTR;
 
@@ -50,6 +50,13 @@ static int testfdt_drv_probe(struct udevice *dev)
 	struct dm_test_priv *priv = dev_get_priv(dev);
 
 	priv->ping_total += DM_TEST_START_TOTAL;
+
+	/*
+	 * If this device is on a bus, the uclass_flag will be set before
+	 * calling this function. This is used by
+	 * dm_test_bus_child_pre_probe_uclass().
+	 */
+	priv->uclass_total += priv->uclass_flag;
 
 	return 0;
 }
@@ -89,9 +96,10 @@ int testfdt_ping(struct udevice *dev, int pingval, int *pingret)
 UCLASS_DRIVER(testfdt) = {
 	.name		= "testfdt",
 	.id		= UCLASS_TEST_FDT,
+	.flags		= DM_UC_FLAG_SEQ_ALIAS,
 };
 
-int dm_check_devices(struct dm_test_state *dms, int num_devices)
+int dm_check_devices(struct unit_test_state *uts, int num_devices)
 {
 	struct udevice *dev;
 	int ret;
@@ -118,7 +126,7 @@ int dm_check_devices(struct dm_test_state *dms, int num_devices)
 		debug("dev=%d, base=%d: %s\n", i, base,
 		      fdt_get_name(gd->fdt_blob, dev->of_offset, NULL));
 
-		ut_assert(!dm_check_operations(dms, dev, base,
+		ut_assert(!dm_check_operations(uts, dev, base,
 					       dev_get_priv(dev)));
 	}
 
@@ -126,9 +134,9 @@ int dm_check_devices(struct dm_test_state *dms, int num_devices)
 }
 
 /* Test that FDT-based binding works correctly */
-static int dm_test_fdt(struct dm_test_state *dms)
+static int dm_test_fdt(struct unit_test_state *uts)
 {
-	const int num_devices = 4;
+	const int num_devices = 6;
 	struct udevice *dev;
 	struct uclass *uc;
 	int ret;
@@ -143,21 +151,21 @@ static int dm_test_fdt(struct dm_test_state *dms)
 	/* These are num_devices compatible root-level device tree nodes */
 	ut_asserteq(num_devices, list_count_items(&uc->dev_head));
 
-	/* Each should have no platdata / priv */
+	/* Each should have platform data but no private data */
 	for (i = 0; i < num_devices; i++) {
 		ret = uclass_find_device(UCLASS_TEST_FDT, i, &dev);
 		ut_assert(!ret);
 		ut_assert(!dev_get_priv(dev));
-		ut_assert(!dev->platdata);
+		ut_assert(dev->platdata);
 	}
 
-	ut_assertok(dm_check_devices(dms, num_devices));
+	ut_assertok(dm_check_devices(uts, num_devices));
 
 	return 0;
 }
 DM_TEST(dm_test_fdt, 0);
 
-static int dm_test_fdt_pre_reloc(struct dm_test_state *dms)
+static int dm_test_fdt_pre_reloc(struct unit_test_state *uts)
 {
 	struct uclass *uc;
 	int ret;
@@ -176,7 +184,7 @@ static int dm_test_fdt_pre_reloc(struct dm_test_state *dms)
 DM_TEST(dm_test_fdt_pre_reloc, 0);
 
 /* Test that sequence numbers are allocated properly */
-static int dm_test_fdt_uclass_seq(struct dm_test_state *dms)
+static int dm_test_fdt_uclass_seq(struct unit_test_state *uts)
 {
 	struct udevice *dev;
 
@@ -184,7 +192,7 @@ static int dm_test_fdt_uclass_seq(struct dm_test_state *dms)
 	ut_assertok(uclass_find_device_by_seq(UCLASS_TEST_FDT, 3, true, &dev));
 	ut_asserteq_str("b-test", dev->name);
 
-	ut_assertok(uclass_find_device_by_seq(UCLASS_TEST_FDT, 0, true, &dev));
+	ut_assertok(uclass_find_device_by_seq(UCLASS_TEST_FDT, 8, true, &dev));
 	ut_asserteq_str("a-test", dev->name);
 
 	ut_asserteq(-ENODEV, uclass_find_device_by_seq(UCLASS_TEST_FDT, 5,
@@ -220,18 +228,18 @@ static int dm_test_fdt_uclass_seq(struct dm_test_state *dms)
 	ut_asserteq(-ENODEV, uclass_get_device_by_seq(UCLASS_TEST_FDT, 1,
 						      &dev));
 	ut_assertok(uclass_get_device(UCLASS_TEST_FDT, 0, &dev));
-	ut_assertok(uclass_get_device(UCLASS_TEST_FDT, 1, &dev));
+	ut_assertok(uclass_get_device(UCLASS_TEST_FDT, 4, &dev));
 
 	/* But now that it is probed, we can find it */
 	ut_assertok(uclass_get_device_by_seq(UCLASS_TEST_FDT, 1, &dev));
-	ut_asserteq_str("a-test", dev->name);
+	ut_asserteq_str("f-test", dev->name);
 
 	return 0;
 }
 DM_TEST(dm_test_fdt_uclass_seq, DM_TESTF_SCAN_PDATA | DM_TESTF_SCAN_FDT);
 
 /* Test that we can find a device by device tree offset */
-static int dm_test_fdt_offset(struct dm_test_state *dms)
+static int dm_test_fdt_offset(struct unit_test_state *uts)
 {
 	const void *blob = gd->fdt_blob;
 	struct udevice *dev;

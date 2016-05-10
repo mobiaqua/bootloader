@@ -11,7 +11,7 @@
 #ifndef _BOOTSTAGE_H
 #define _BOOTSTAGE_H
 
-/* The number of boot stage records available for the user */
+/* Define this for host tools */
 #ifndef CONFIG_BOOTSTAGE_USER_COUNT
 #define CONFIG_BOOTSTAGE_USER_COUNT	20
 #endif
@@ -86,9 +86,9 @@ enum bootstage_id {
 	BOOTSTAGE_ID_POST_FAIL_R,	/* Post failure reported after reloc */
 
 	/*
-	 * This set is reported ony by x86, and the meaning is different. In
+	 * This set is reported only by x86, and the meaning is different. In
 	 * this case we are reporting completion of a particular stage.
-	 * This should probably change in he x86 code (which doesn't report
+	 * This should probably change in the x86 code (which doesn't report
 	 * errors in any case), but discussion this can perhaps wait until we
 	 * have a generic board implementation.
 	 */
@@ -168,6 +168,7 @@ enum bootstage_id {
 	BOOTSTAGE_ID_NAND_FIT_READ = 150,
 	BOOTSTAGE_ID_NAND_FIT_READ_OK,
 
+	BOOTSTAGE_ID_FIT_LOADABLE_START = 160,	/* for Loadable Images */
 	/*
 	 * These boot stages are new, higher level, and not directly related
 	 * to the old boot progress numbers. They are useful for recording
@@ -194,6 +195,9 @@ enum bootstage_id {
 	BOOTSTAGE_ID_MAIN_CPU_READY,
 
 	BOOTSTAGE_ID_ACCUM_LCD,
+	BOOTSTAGE_ID_ACCUM_SCSI,
+	BOOTSTAGE_ID_ACCUM_SPI,
+	BOOTSTAGE_ID_ACCUM_DECOMP,
 
 	/* a few spare for the user, from here */
 	BOOTSTAGE_ID_USER,
