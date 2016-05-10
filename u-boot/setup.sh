@@ -19,7 +19,7 @@ make CROSS_COMPILE=arm-linux-gnueabi- ${1}_config && {
 	h3600)
 		addcmd "cable ${MA_JTAG_ADAPTER}"
 		addcmd "detect"
-		addcmd "poke 0x49000000 1"
+		addcmd "poke 0x49000000 1" # unlock flash for writting
 		addcmd "detectflash 0"
 		addcmd "flashmem 0 u-boot.bin noverify"
 		addcmd "reset"
@@ -28,7 +28,7 @@ make CROSS_COMPILE=arm-linux-gnueabi- ${1}_config && {
 	h3800)
 		addcmd "cable ${MA_JTAG_ADAPTER}"
 		addcmd "detect"
-		addcmd "poke 0x49001f00 1"
+		addcmd "poke 0x49001f00 1" # unlock flash for writting
 		addcmd "detectflash 0"
 		addcmd "flashmem 0 u-boot.bin noverify"
 		addcmd "reset"
