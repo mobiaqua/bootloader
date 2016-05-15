@@ -60,7 +60,12 @@ ENTRY(relocate_vectors)
 	stmia	r1!, {r2-r8,r10}
 #endif
 #endif
+	/* ARMv4- don't know bx lr but the assembler fails to see that */
+#ifdef __ARM_ARCH_4__
+	mov	pc, lr
+#else                
 	bx	lr
+#endif
 
 ENDPROC(relocate_vectors)
 
