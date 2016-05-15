@@ -39,4 +39,4 @@ make CROSS_COMPILE=arm-linux-gnueabi- ${1}_config && {
 		exit 1
 		;;
 	esac
-} && make CROSS_COMPILE=arm-linux-gnueabi- clean
+}
